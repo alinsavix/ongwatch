@@ -1,3 +1,4 @@
 twitchAPI
 tdvutil
 pytz
+toml

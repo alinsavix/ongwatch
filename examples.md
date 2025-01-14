@@ -2781,3 +2781,61 @@ Event of type ChannelChatNotificationEvent:
         )
 )
 ```
+
+## Direct sub, first time
+
+```python
+ChannelSubscribeEvent'>:
+ twitchAPI.object.eventsub.ChannelSubscribeEvent(
+    event = twitchAPI.object.eventsub.ChannelSubscribeData(
+            broadcaster_user_id = '156801396',
+            broadcaster_user_login = 'jonathanong',
+            broadcaster_user_name = 'JonathanOng',
+            is_gift = False,
+            tier = '1000',
+            user_id = '466206576',
+            user_login = 'dreadvixenbot',
+            user_name = 'dreadvixenbot'
+        ),
+)
+Event of type ChannelChatNotificationEvent'>:
+ twitchAPI.object.eventsub.ChannelChatNotificationEvent(
+    event = twitchAPI.object.eventsub.ChannelChatNotificationData(
+            announcement = None,
+            badges = [
+                    twitchAPI.object.eventsub.Badge(
+                        id = '0',
+                        info = '1',
+                        set_id = 'subscriber'
+                    )
+                ],
+            bits_badge_tier = None,
+            broadcaster_user_id = '156801396',
+            broadcaster_user_login = 'jonathanong',
+            broadcaster_user_name = 'JonathanOng',
+            charity_donation = None,
+            chatter_is_anonymous = False,
+            chatter_user_id = '466206576',
+            chatter_user_login = 'dreadvixenbot',
+            chatter_user_name = 'dreadvixenbot',
+            color = '',
+            community_sub_gift = None,
+            gift_paid_upgrade = None,
+            message = twitchAPI.object.eventsub.Message(fragments = [], text = ''),
+            message_id = 'e6f60477-42eb-4a1d-892c-766c2c042ee0',
+            notice_type = 'sub',
+            pay_it_forward = None,
+            prime_paid_upgrade = None,
+            raid = None,
+            resub = None,
+            sub = twitchAPI.object.eventsub.SubNoticeMetadata(
+                    duration_months = 1,
+                    is_prime = False,
+                    sub_tier = '1000'
+                ),
+            sub_gift = None,
+            system_message = 'dreadvixenbot subscribed at Tier 1.',
+            unraid = None
+        ),
+)
+```

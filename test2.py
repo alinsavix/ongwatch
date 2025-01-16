@@ -1,15 +1,18 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # See https://twitchpy.readthedocs.io/ for docs
 
 import argparse
 import asyncio
+import datetime
 import io
 import json
 import sys
+import time
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 import toml
+import pytz
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 from twitch import Client
@@ -21,9 +24,34 @@ def log(msg: str) -> None:
     sys.stderr.flush()
 
 
+def now() -> int:
+    return int(time.time())
+
+
+def timestr_est(ts: int) -> str:
+    utc_time = datetime.datetime.fromtimestamp(ts, datetime.UTC)
+    eastern_zone = pytz.timezone('US/Eastern')
+    eastern_time = utc_time.replace(tzinfo=pytz.utc).astimezone(eastern_zone)
+    return eastern_time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def printsupport(ts: int, gifter: str = "", supporter: str = "", type: str = "", amount: float = 0.0, comment: str = ""):
+    ts_str = timestr_est(ts)
+    print(f"{ts_str}\t\t{gifter}\t{supporter}\t{type}\t${amount}\tna\t{comment}")
+
+
 class OngWatch(Client):
+    botargs: argparse.Namespace
+
     def __init__(self, client_id: str, client_secret: str, **options) -> None:
+        if "botargs" in options:
+            self.botargs = options["botargs"]
+
         super().__init__(client_id, client_secret, **options)
+
+    # @staticmethod
+    # async def on_error(event_name: str, error: Exception, /, *args: Any, **kwargs: Any) -> None:
+    #     log(f"INFO: Error: {error}")
 
     async def setup_hook(self) -> None:
         """Called when the client is setting up"""
@@ -144,132 +172,131 @@ class OngWatch(Client):
 
         # print(self.total_subscription_cost, self.max_subscription_cost)
 
-    async def on_socket_raw_receive(self, data) -> None:
+    async def on_socket_raw_receive(self, data: Any) -> None:
         log(f"INFO: Socket raw receive: {data}")
 
-    async def on_channel_update(self, data):
+    async def on_channel_update(self, data: eventsub.channels.ChannelUpdateEvent):
         log(f"INFO: Channel update received: {data}")
 
-    async def on_user_update(self, data):
+    async def on_user_update(self, data: eventsub.users.UserUpdateEvent):
         log(f"INFO: User update received: {data}")
 
-    async def on_stream_online(self, data):
+    async def on_stream_online(self, data: eventsub.streams.StreamOnlineEvent):
         log(f"INFO: Stream online received: {data}")
 
-    async def on_stream_offline(self, data):
+    async def on_stream_offline(self, data: eventsub.streams.StreamOfflineEvent):
         log(f"INFO: Stream offline received: {data}")
 
-    async def on_chat_message(self, data):
-        log(f"INFO: Chat message received: {data}")
+    async def on_chat_message(self, data: eventsub.chat.MessageEvent):
+        if self.botargs.show_messages:
+            log(f"INFO: Chat message received: {data}")
 
-    async def on_chat_notification(self, data):
+    async def on_chat_notification(self, data: eventsub.chat.NotificationEvent):
         log(f"INFO: Chat notification received: {data}")
 
-    async def on_chat_settings_update(self, data):
+    async def on_chat_settings_update(self, data: eventsub.chat.SettingsUpdateEvent):
         log(f"INFO: Chat settings update received: {data}")
 
-    async def on_cheer(self, data):
-        log(f"INFO: Cheer received: {data}")
+    async def on_cheer(self, data: eventsub.bits.CheerEvent):
+        # print(type(data))
+        # log(f"INFO: Cheer received: {data}")
+        printsupport(ts=now(), supporter=data["user_name"] or "Unknown", type="Bits", amount=data["bits"] / 100.0)
 
-    async def on_automod_settings_update(self, data):
+
+    async def on_automod_settings_update(self, data: eventsub.moderation.AutomodSettingsUpdateEvent):
         log(f"INFO: Automod settings update received: {data}")
 
-    # async def on_automod_terms_update(self, data):
+    # async def on_automod_terms_update(self, data: eventsub.moderation.AutomodTermsUpdateEvent):
     #     log(f"INFO: Automod action received: {data}")
 
-    # async def on_ban(self, data):
+    # async def on_ban(self, data: eventsub.moderation.BanEvent):
     #     log(f"INFO: Ban received: {data}")
 
-    # async def on_unban(self, data):
+    # async def on_unban(self, data: eventsub.moderation.UnbanEvent):
     #     log(f"INFO: Unban received: {data}")
 
-    async def on_channel_moderate(self, data):
+    async def on_channel_moderate(self, data: eventsub.moderation.ModerateEvent):
         log(f"INFO: Channel moderate received: {data}")
 
-    async def on_moderator_add(self, data):
+    async def on_moderator_add(self, data: eventsub.moderation.ModeratorAddEvent):
         log(f"INFO: Moderator add received: {data}")
 
-    async def on_moderator_remove(self, data):
+    async def on_moderator_remove(self, data: eventsub.moderation.ModeratorRemoveEvent):
         log(f"INFO: Moderator remove received: {data}")
 
-    async def on_follow(self, data):
+    async def on_follow(self, data: eventsub.channels.FollowEvent):
         log(f"INFO: Follow received: {data}")
 
     # Only for new subs (or long expired subs)
-    async def on_subscribe(self, data):
+    async def on_subscribe(self, data: eventsub.channels.SubscribeEvent):
         log(f"INFO: Subscribe received: {data}")
 
-    async def on_subscription_end(self, data):
+    async def on_subscription_end(self, data: eventsub.channels.SubscriptionEndEvent):
         log(f"INFO: Subscription end received: {data}")
 
-    async def on_subscription_gift(self, data):
+    async def on_subscription_gift(self, data: eventsub.channels.SubscriptionGiftEvent):
         log(f"INFO: Subscription gift received: {data}")
 
-    async def on_subscription_message(self, data):
+    async def on_subscription_message(self, data: eventsub.channels.SubscriptionMessageEvent):
         log(f"INFO: Subscription message received: {data}")
 
-    async def on_points_automatic_reward_redemption_add(self, data):
+    async def on_points_automatic_reward_redemption_add(self, data: eventsub.interaction.AutomaticRewardRedemptionAddEvent):
         log(f"INFO: Points automatic reward redemption add received: {data}")
 
-    async def on_points_reward_add(self, data):
+    async def on_points_reward_add(self, data: eventsub.interaction.PointRewardEvent):
         log(f"INFO: Points reward add received: {data}")
 
-    async def on_points_reward_update(self, data):
+    async def on_points_reward_update(self, data: eventsub.interaction.PointRewardEvent):
         log(f"INFO: Points reward update received: {data}")
 
-    async def on_points_reward_remove(self, data):
+    async def on_points_reward_remove(self, data: eventsub.interaction.PointRewardEvent):
         log(f"INFO: Points reward remove received: {data}")
 
-    async def on_points_reward_redemption_add(self, data):
+    async def on_points_reward_redemption_add(self, data: eventsub.interaction.RewardRedemptionEvent):
         log(f"INFO: Points reward redemption add received: {data}")
 
-    async def on_points_reward_redemption_update(self, data):
+    async def on_points_reward_redemption_update(self, data: eventsub.interaction.RewardRedemptionEvent):
         log(f"INFO: Points reward redemption update received: {data}")
 
-    async def on_points_reward_redemption_remove(self, data):
+    async def on_points_reward_redemption_remove(self, data: eventsub.interaction.PointRewardEvent):
         log(f"INFO: Points reward redemption remove received: {data}")
 
-    async def on_poll_begin(self, data):
+    async def on_poll_begin(self, data: eventsub.interaction.PollBeginEvent):
         log(f"INFO: Poll begin received: {data}")
 
-    async def on_poll_progress(self, data):
+    async def on_poll_progress(self, data: eventsub.interaction.PollProgressEvent):
         log(f"INFO: Poll progress received: {data}")
 
-    async def on_poll_end(self, data):
+    async def on_poll_end(self, data: eventsub.interaction.PollEndEvent):
         log(f"INFO: Poll end received: {data}")
 
-    async def on_prediction_begin(self, data):
+    async def on_prediction_begin(self, data: eventsub.interaction.PredictionBeginEvent):
         log(f"INFO: Prediction begin received: {data}")
 
-    async def on_prediction_progress(self, data):
+    async def on_prediction_progress(self, data: eventsub.interaction.PredictionProgressEvent):
         log(f"INFO: Prediction progress received: {data}")
 
-    async def on_prediction_lock(self, data):
+    async def on_prediction_lock(self, data: eventsub.interaction.PredictionLockEvent):
         log(f"INFO: Prediction lock received: {data}")
 
-    async def on_prediction_end(self, data):
+    async def on_prediction_end(self, data: eventsub.interaction.PredictionEndEvent):
         log(f"INFO: Prediction end received: {data}")
 
-    async def on_hype_train_begin(self, data):
+    async def on_hype_train_begin(self, data: eventsub.interaction.HypeTrainEvent):
         log(f"INFO: Hype train begin received: {data}")
 
-    async def on_hype_train_progress(self, data):
+    async def on_hype_train_progress(self, data: eventsub.interaction.HypeTrainEvent):
         log(f"INFO: Hype train progress received: {data}")
 
-    async def on_hype_train_end(self, data):
+    async def on_hype_train_end(self, data: eventsub.interaction.HypeTrainEndEvent):
         log(f"INFO: Hype train end received: {data}")
 
-    async def on_ad_break_begin(self, data):
+    async def on_ad_break_begin(self, data: eventsub.streams.AdBreakBeginEvent):
         log(f"INFO: Ad break begin received: {data}")
 
-    async def on_raid(self, data):
+    async def on_raid(self, data: eventsub.streams.RaidEvent):
         log(f"INFO: Raid received: {data}")
 
-
-
-    # @staticmethod
-    # async def on_error(event_name: str, error: Exception, /, *args: Any, **kwargs: Any) -> None:
-    #     log(f"INFO: Error: {error}")
 
 
 def get_credentials(cfgfile: Path, environment: str) -> Dict[str, str]:
@@ -328,6 +355,13 @@ def parse_args() -> argparse.Namespace:
         help="output raw websocket messages as received"
     )
 
+    parser.add_argument(
+        "--show-messages",
+        default=False,
+        action="store_true",
+        help="show all messages"
+    )
+
     # parser.add_argument(
     #     "--dbfile",
     #     type=Path,
@@ -368,8 +402,8 @@ def main() -> int:
     print(f"tokens: {tokens}")
     print(f"creds: {creds}")
 
-    client = OngWatch(creds['client_id'], creds['client_secret'], socket_debug=args.debug_socket)
-    client.run(tokens['token'], reconnect=True)
+    client = OngWatch(client_id=creds['client_id'], client_secret=creds['client_secret'], botargs=args, socket_debug=args.debug_socket)
+    client.run(access_token=tokens['token'], refresh_token=tokens["refresh"], reconnect=True)
 
     return 0
     # client.close()

@@ -1944,7 +1944,6 @@ Event of type StreamOfflineEvent:
 
 ## Single direct sub
 
-
 ```python
 Event of type ChannelSubscribeEvent:
  twitchAPI.object.eventsub.ChannelSubscribeEvent(
@@ -2785,7 +2784,7 @@ Event of type ChannelChatNotificationEvent:
 ## Direct sub, first time
 
 ```python
-ChannelSubscribeEvent'>:
+ChannelSubscribeEvent:
  twitchAPI.object.eventsub.ChannelSubscribeEvent(
     event = twitchAPI.object.eventsub.ChannelSubscribeData(
             broadcaster_user_id = '156801396',
@@ -2798,7 +2797,10 @@ ChannelSubscribeEvent'>:
             user_name = 'dreadvixenbot'
         ),
 )
-Event of type ChannelChatNotificationEvent'>:
+```
+
+```python
+Event of type ChannelChatNotificationEvent:
  twitchAPI.object.eventsub.ChannelChatNotificationEvent(
     event = twitchAPI.object.eventsub.ChannelChatNotificationData(
             announcement = None,
@@ -2835,6 +2837,121 @@ Event of type ChannelChatNotificationEvent'>:
                 ),
             sub_gift = None,
             system_message = 'dreadvixenbot subscribed at Tier 1.',
+            unraid = None
+        ),
+)
+```
+
+## Single Anonymous Random Gift Sub
+
+```python
+Event of type ChannelSubscriptionGiftEvent:
+ twitchAPI.object.eventsub.ChannelSubscriptionGiftEvent(
+    event = twitchAPI.object.eventsub.ChannelSubscriptionGiftData(
+            broadcaster_user_id = '156801396',
+            broadcaster_user_login = 'jonathanong',
+            broadcaster_user_name = 'JonathanOng',
+            cumulative_total = None,
+            is_anonymous = True,
+            tier = '1000',
+            total = 1,
+            user_id = None,
+            user_login = None,
+            user_name = None
+        ),
+)
+```
+
+```python
+Event of type ChannelChatNotificationEvent:
+ twitchAPI.object.eventsub.ChannelChatNotificationEvent(
+    event = twitchAPI.object.eventsub.ChannelChatNotificationData(
+            announcement = None,
+            badges = [],
+            bits_badge_tier = None,
+            broadcaster_user_id = '156801396',
+            broadcaster_user_login = 'jonathanong',
+            broadcaster_user_name = 'JonathanOng',
+            charity_donation = None,
+            chatter_is_anonymous = True,
+            chatter_user_id = None,
+            chatter_user_login = None,
+            chatter_user_name = None,
+            color = '',
+            community_sub_gift = twitchAPI.object.eventsub.CommunitySubGiftNoticeMetadata(
+                    cumulative_total = None,
+                    id = '5986310024679257078',
+                    sub_tier = '1000',
+                    total = 1
+                ),
+            gift_paid_upgrade = None,
+            message = twitchAPI.object.eventsub.Message(fragments = [], text = ''),
+            message_id = 'aa7f9bd8-db21-4fc7-bf99-d2e270f12eaa',
+            notice_type = 'community_sub_gift',
+            pay_it_forward = None,
+            prime_paid_upgrade = None,
+            raid = None,
+            resub = None,
+            sub = None,
+            sub_gift = None,
+            system_message = "AnAnonymousGifter is gifting 1 Tier 1 Subs to JonathanOng's community!",
+            unraid = None
+        ),
+)
+```
+
+```python
+Event of type ChannelSubscribeEvent:
+ twitchAPI.object.eventsub.ChannelSubscribeEvent(
+    event = twitchAPI.object.eventsub.ChannelSubscribeData(
+            broadcaster_user_id = '156801396',
+            broadcaster_user_login = 'jonathanong',
+            broadcaster_user_name = 'JonathanOng',
+            is_gift = True,
+            tier = '1000',
+            user_id = '28276981',
+            user_login = 'frenchstallion',
+            user_name = 'FrenchStallion'
+        ),
+)
+```
+
+```python
+Event of type ChannelChatNotificationEvent:
+ twitchAPI.object.eventsub.ChannelChatNotificationEvent(
+    event = twitchAPI.object.eventsub.ChannelChatNotificationData(
+            announcement = None,
+            badges = [],
+            bits_badge_tier = None,
+            broadcaster_user_id = '156801396',
+            broadcaster_user_login = 'jonathanong',
+            broadcaster_user_name = 'JonathanOng',
+            charity_donation = None,
+            chatter_is_anonymous = True,
+            chatter_user_id = None,
+            chatter_user_login = None,
+            chatter_user_name = None,
+            color = '',
+            community_sub_gift = None,
+            gift_paid_upgrade = None,
+            message = twitchAPI.object.eventsub.Message(fragments = [], text = ''),
+            message_id = '4e4fc882-5753-477c-84d6-fd25cd1a2f40',
+            notice_type = 'sub_gift',
+            pay_it_forward = None,
+            prime_paid_upgrade = None,
+            raid = None,
+            resub = None,
+            sub = None,
+            sub_gift = twitchAPI.object.eventsub.SubGiftNoticeMetadata(
+                    community_gift_id = '5986310024679257078',
+                    cumulative_total = None,
+                    duration_months = 1,
+                    recipient_user_id = '28276981',
+                    recipient_user_login = 'frenchstallion',
+                    recipient_user_name = 'FrenchStallion',
+                    sub_tier = '1000'
+                ),
+            system_message = 'An anonymous user gifted a Tier 1 sub to FrenchStallion! ',
             unraid = None
         ),
 )

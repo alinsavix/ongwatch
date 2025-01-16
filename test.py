@@ -108,8 +108,8 @@ async def token_create(twitch: Twitch, scopes: list[AuthScope]) -> Tuple[str, st
     print(f"Please authorize this device: {url}")
     token, refresh = await code_flow.wait_for_auth_complete()
 
-    print(f"New token: {token}")
-    print(f"New refresh: {refresh}")
+    # print(f"New token: {token}")
+    # print(f"New refresh: {refresh}")
 
     return token, refresh
 
@@ -129,7 +129,7 @@ async def on_any(data: Any):
     sys.stdout.flush()
 
 
-async def run(args: argparse.Namespace, creds: Dict[str, str]):
+async def run(args: argparse.Namespace, creds: Dict[str, str]) -> int:
     twitch = await Twitch(creds['client_id'], creds['client_secret'])
 
     # token_file = Path(__file__).parent / "user_token.json"
@@ -282,25 +282,32 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--auth-only", "--auth",
+        default=False,
+        action="store_true",
+        help="only authenticate, then exit"
+    )
+
+    parser.add_argument(
         "--environment", "--env",
         type=str,
         default="test",
         help="environment to use"
     )
 
-    parser.add_argument(
-        "--dbfile",
-        type=Path,
-        default=None,
-        help="database file to use"
-    )
+    # parser.add_argument(
+    #     "--dbfile",
+    #     type=Path,
+    #     default=None,
+    #     help="database file to use"
+    # )
 
-    parser.add_argument(
-        "--debug-queries",
-        default=False,
-        action="store_true",
-        help="print all queries to stderr",
-    )
+    # parser.add_argument(
+    #     "--debug-queries",
+    #     default=False,
+    #     action="store_true",
+    #     help="print all queries to stderr",
+    # )
 
     parsed_args = parser.parse_args()
 
@@ -322,12 +329,19 @@ def main() -> int:
     args = parse_args()
 
     creds = get_credentials(args.credentials_file, args.environment)
+
+
+    if args.auth_only:
+        asyncio.run(token_create(twitch, USER_SCOPES))
+        return 0
+
+
     log("INFO: In startup")
 
-    asyncio.run(run(args, creds))
+    return asyncio.run(run(args, creds))
 
 
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

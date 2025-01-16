@@ -8,6 +8,8 @@ toml
 
 # debugging and such
 mypy
+types-toml
+types-pytz
 
 # our standard flake8 bits (...maybe we need a metapackage)
 flake8-async

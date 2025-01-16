@@ -27,6 +27,7 @@ AUTOMATIC_REWARD_COSTS = {
 }
 
 # units are in dollars
+# FIXME: the keys should actually be strings, per twitch docs
 SUB_VALUES = {
     1000: 5.00,
     2000: 10.00,
@@ -37,6 +38,8 @@ SUB_VALUES = {
 def out(msg: str) -> None:
     print(timestr_est(now()), msg, file=sys.stdout)
     sys.stdout.flush()
+
+    log(msg)
 
 
 def log(msg: str) -> None:
@@ -57,8 +60,13 @@ def timestr_est(ts: int) -> str:
 
 def printsupport(ts: int, gifter: str = "", supporter: str = "", type: str = "", amount: float = 0.0, comment: str = ""):
     ts_str = timestr_est(ts)
-    print(f"{ts_str}\t\t{gifter}\t{supporter}\t{type}\t${amount:0.2f}\tna\t{comment}", file=sys.stdout)
+    outstr = f"{ts_str}\t\t{gifter}\t{supporter}\t{type}\t${amount:0.2f}\tna\t{comment}"
+    print(outstr, file=sys.stdout)
     sys.stdout.flush()
+
+    # FIXME: super sloppy
+    print(outstr, file=sys.stderr)
+    sys.stderr.flush()
 
 
 class OngWatch(Client):

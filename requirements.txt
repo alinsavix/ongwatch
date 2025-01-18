@@ -1,5 +1,4 @@
-twitchAPI
-twitch.py   # might use this instead
+twitch.py >= 3.2.7
 tdvutil
 pytz
 toml

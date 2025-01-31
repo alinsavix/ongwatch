@@ -78,7 +78,7 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
         super().__init__(namespace)
 
     async def on_connect(self):
-        log('connection established')
+        log('SE: connection established')
         # sio.emit('authenticate', {"method": "jwt", "token": JWT})
         # creds = get_credentials(Path('credentials.toml'), 'test')
         await self.emit('authenticate', {"method": "apikey", "token": self.token})

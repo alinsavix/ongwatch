@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
+import aiohttp
 import pytz
 import toml
 from tdvutil import ppretty
@@ -44,3 +45,13 @@ def printsupport(ts: int, gifter: str = "", supporter: str = "", type: str = "",
     # FIXME: super sloppy
     print(outstr, file=sys.stderr)
     sys.stderr.flush()
+
+
+async def get_json_url(url) -> Dict[str, Any]:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status != 200:
+                raise Exception(f"HTTP {response.status} for {url}")
+
+            # else
+            return await response.json()

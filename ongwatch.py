@@ -15,6 +15,7 @@ from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
 import _ongwatch.streamelements as streamelements
+import _ongwatch.streamlabs as streamlabs
 import _ongwatch.twitch as twitch
 from _ongwatch.util import log
 
@@ -127,6 +128,9 @@ async def main() -> int:
 
     tw_creds = get_credentials(args.credentials_file, "twitch", args.environment)
     tasks.append(asyncio.create_task(twitch.start(args, tw_creds)))
+
+    sl_creds = get_credentials(args.credentials_file, "streamlabs", args.environment)
+    tasks.append(asyncio.create_task(streamlabs.start(args, sl_creds)))
 
     # client = OngWatch(client_id=creds['client_id'], client_secret=creds['client_secret'],
     #                   botargs=args, socket_debug=args.debug_socket)

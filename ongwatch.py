@@ -123,11 +123,11 @@ async def main() -> int:
 
     tasks: list[asyncio.Task] = []
 
-    se_creds = get_credentials(args.credentials_file, "streamelements", args.environment)
-    tasks.append(asyncio.create_task(streamelements.start(args, se_creds)))
-
     tw_creds = get_credentials(args.credentials_file, "twitch", args.environment)
     tasks.append(asyncio.create_task(twitch.start(args, tw_creds)))
+
+    se_creds = get_credentials(args.credentials_file, "streamelements", args.environment)
+    tasks.append(asyncio.create_task(streamelements.start(args, se_creds)))
 
     sl_creds = get_credentials(args.credentials_file, "streamlabs", args.environment)
     tasks.append(asyncio.create_task(streamlabs.start(args, sl_creds)))

@@ -112,10 +112,14 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
         t = event['type']
 
         if t == "tip":
+            if event['isMock']:
+                type = "Tip_TEST"
+            else:
+                type = "Tip"
             amount = event['data']['amount']
             user = event['data']['displayName']
             # log(f'XXX {t} {amount} {user}')
-            printsupport(now(), supporter=user, type="Tip", amount=amount)
+            printsupport(now(), supporter=user, type=type, amount=amount)
         else:
             log(f"SE: Ignoring event of type {t}: {event}")
         # sio.emit('my response', {'response': 'my response'})
@@ -149,7 +153,7 @@ async def start(args: argparse.Namespace, creds: Dict[str, str]):
 
     log(f"Starting SE backend")
 
-    sio = socketio.AsyncClient(logger=True, engineio_logger=True)
+    sio = socketio.AsyncClient(logger=False, engineio_logger=False, reconnection=True)
     sio.register_namespace(OngWatch_SE(args, token, "/"))
     await sio.connect('https://realtime.streamelements.com', transports=['websocket'], headers={"Content-Type": "application/json"})
     await sio.wait()

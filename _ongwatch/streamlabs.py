@@ -23,43 +23,8 @@ from _ongwatch.util import get_json_url, log, now, out, printsupport
 #     'thirdpartyplatforms': []
 # }
 
-
-
-class SEWebSocketClosure(Exception):
+class SLWebSocketClosure(Exception):
     """Exception indicating closure of the WebSocket."""
-
-# class ReconnectWebSocket(Exception):
-#     """Exception indicating the need to reconnect to the websocket."""
-
-#     def __init__(self, url: str) -> None:
-#         self.url: str = url
-
-
-# const options = {
-#     method: 'GET',
-#     headers: {'Content-Type': 'application/json', Authorization: 'Bearer JWT_TOKEN'}
-# }
-
-# fetch('https://api.streamelements.com/kappa/v2/activities/channel', options)
-# .then(response=> response.json())
-# .then(response=> console.log(response))
-# .catch(err= > console.error(err))
-
-
-
-
-
-# const socket = io('https://realtime.streamelements.com', {
-
-#     transports: ['websocket']
-
-# })
-
-# def log(msg):
-#     from datetime import datetime
-#     current_time = datetime.now()
-#     print(f"{current_time} {msg}")
-#     sys.stdout.flush()
 
 
 # logging.basicConfig()
@@ -80,9 +45,10 @@ class SEWebSocketClosure(Exception):
 
 class OngWatch_SL(socketio.AsyncClientNamespace):
     botargs: argparse.Namespace
-    info: Dict[str, Any]
+    info: Dict[str, Any]|None
 
-    def __init__(self, args: argparse.Namespace, info: Dict[str, Any], namespace: str = '/') -> None:
+
+    def __init__(self, args: argparse.Namespace, info: Dict[str, Any]|None, namespace: str = '/') -> None:
         self.botargs = args
         self.info = info
 
@@ -147,13 +113,18 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
         # log(f"arg1 (self): {ppretty(self)}")
         # log(f"arg2 (zot): {ppretty(data)}")
         # log(f"arg3 (data): {ppretty(extra)}")
-        t = event['type']
+        t = event["type"]
+
 
         if t == "donation":
-            amount = event['message'][0]['amount']
-            user = event['message'][0]['from']
+            amount = event["message"][0]["amount"]
+            user = event["message"][0]["from"]
+            if event["message"][0]["isTest"]:
+                type = "Tip_TEST"
+            else:
+                type = "Tip"
             # log(f'XXX {t} {amount} {user}')
-            printsupport(now(), supporter=user, type="Tip", amount=amount)
+            printsupport(now(), supporter=user, type=type, amount=amount)
         else:
             log(f"SL: Ignoring event of type {t}: {event}")
         # sio.emit('my response', {'response': 'my response'})
@@ -179,20 +150,29 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
 
 # FIXME: support socket tokens, not this ghetto undocumented thing
 async def start(args: argparse.Namespace, creds: Dict[str, str]):
-    if "token" in creds:
-        token = creds["token"]
-    else:
-        raise ValueError("No token found in credentials")
+    # Commented out bits are for getting a connection using the last bit of the
+    # overlay URL, which is a reverse engineered/undocumented thing. We should
+    # make this selectable at some point.
+    # if "apikey" in creds:
+    #     token = creds["apikey"]
+    # else:
+    #     raise ValueError("No token found in credentials")
+    #
+    # token_url = f"https://streamlabs.com/api/v5/io/info?token={apikey}"
+    # info = await get_json_url(token_url)
+    # sio = socketio.AsyncClient(logger=True, engineio_logger=True, reconnection=True,
+    #                            reconnection_attempts=info["settings"]["reconnect_attempts"],
+    #                            reconnection_delay=info["settings"]["reconnect_delay"] / 1000,
+    #                            reconnection_delay_max=info["settings"]["reconnect_delay_max"] / 1000
+    #                        )
+    # connect_url = info["path"]
 
-    token_url = f"https://streamlabs.com/api/v5/io/info?token={token}"
-    info = await get_json_url(token_url)
+    token = creds['socket_token']
+    connect_url = f"https://sockets.streamlabs.com?token={token}"
+    info = None
+    sio = socketio.AsyncClient(logger=False, engineio_logger=False, reconnection=True)
+    sio.register_namespace(OngWatch_SL(args, info, "/"))
 
     log(f"Starting Streamlabs backend")
-
-    sio = socketio.AsyncClient(logger=True, engineio_logger=True, reconnection=True,
-                               reconnection_attempts=info["settings"]["reconnect_attempts"],
-                               reconnection_delay=info["settings"]["reconnect_delay"] / 1000,
-                               reconnection_delay_max=info["settings"]["reconnect_delay_max"] / 1000)
-    sio.register_namespace(OngWatch_SL(args, info, "/"))
-    await sio.connect(info["path"], transports=['websocket'], headers={"Content-Type": "application/json"})
+    await sio.connect(connect_url, transports=['websocket'], headers={"Content-Type": "application/json"})
     await sio.wait()

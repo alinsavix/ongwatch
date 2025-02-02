@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict
 
@@ -34,12 +35,19 @@ def get_token(token_file: Path) -> Dict[str, str]:
 
 class OngWatch_Twitch(Client):
     botargs: argparse.Namespace
+    logger: logging.Logger
 
     def __init__(self, client_id: str, client_secret: str, **options) -> None:
         if "botargs" in options:
             self.botargs = options["botargs"]
 
+        if "logger" in options:
+            self.logger = options["logger"]
+        else:
+            self.logger = logging.getLogger("twitch.client")
+
         super().__init__(client_id, client_secret, **options)
+
 
     # @staticmethod
     # async def on_error(event_name: str, error: Exception, /, *args: Any, **kwargs: Any) -> None:
@@ -50,38 +58,38 @@ class OngWatch_Twitch(Client):
     #     log("INFO: Setting up client")
 
     async def on_connect(self) -> None:
-        log("TW: Connected to Twitch")
+        self.logger.info('connection established')
 
     async def on_disconnect(self) -> None:
-        log("TW: Disconnected from Twitch")
+        self.logger.warning(f'disconnected')
 
     async def on_ready(self) -> None:
         """Called when the client is ready."""
-        log("TW: Client is ready")
-        log(f"TW: User: {self.user.display_name} ({self.user.id})")
-        log(f"TW: channel liveness: {await self.channel.stream.get_live()}")
+        self.logger.info("Client is ready")
+        self.logger.info(f"User: {self.user.display_name} ({self.user.id})")
+        self.logger.info(f"channel liveness: {await self.channel.stream.get_live()}")
 
         # total_subs = await self.channel.get_total_subscriptions()
         # total_pts = await self.channel.get_subscription_points()
         # log(f"Subscriptions: {total_subs} ({total_pts} pts)")
 
-        log("TW: Listening for events")
+        # log("TW: Listening for events")
 
     # Only happens if socket_debug is true
     async def on_socket_raw_receive(self, data: Any) -> None:
-        log(f"TW: Socket raw receive: {data}")
+        self.logger.debug(f"Socket raw receive: {data}")
 
     async def on_stream_online(self, data: eventsub.streams.StreamOnlineEvent):
-        log(f"TW: Stream online received: {data}")
+        self.logger.info(f"Stream online received: {data}")
         out(f"=== ONLINE (type={data["type"]} @ {data["started_at"]} ===")
 
     async def on_stream_offline(self, data: eventsub.streams.StreamOfflineEvent):
-        log(f"TW: Stream offline received: {data}")
+        self.logger.info(f"Stream offline received: {data}")
         out("=== OFFLINE ===")
 
     async def on_chat_message(self, data: eventsub.chat.MessageEvent):
         if self.botargs.show_messages:
-            log(f"TW: Chat message received: {data}")
+            self.logger.debug(f"Chat message received: {data}")
 
     # This is kinda a train wreck -- the only way to get all the
     # info we need for logging subs/gift subs/resubs/etc, is to
@@ -92,7 +100,7 @@ class OngWatch_Twitch(Client):
     #
     # Sigh.
     async def on_chat_notification(self, data: eventsub.chat.NotificationEvent):
-        log(f"TW: Chat notification received: {data}")
+        self.logger.debug(f"Chat notification received: {data}")
 
         if data["chatter_is_anonymous"]:
             chatter = "AnAnonymousGifter"
@@ -124,16 +132,17 @@ class OngWatch_Twitch(Client):
 
         value = SUB_VALUES[tier]
 
+        self.logger.info(f"output sub: {value} for {recipient}")
         printsupport(ts=now(), gifter=gifter, supporter=recipient, type=sub_str, amount=value)
 
     async def on_cheer(self, data: eventsub.bits.CheerEvent):
         # print(type(data))
-        log(f"TW: Cheer received: {data}")
+        self.logger.debug(f"Cheer received: {data}")
+        self.logger.info(f"output cheer: {data['bits']} for {data['user_name'] or 'Unknown'}")
         printsupport(ts=now(), supporter=data["user_name"] or "Unknown", type="Bits", amount=data["bits"] / 100.0)
 
-
     async def on_points_automatic_reward_redemption_add(self, data: eventsub.interaction.AutomaticRewardRedemptionAddEvent):
-        log(f"TW: Points automatic reward redemption add received: {data}")
+        self.logger.debug(f"Points automatic reward redemption add received: {data}")
 
         user = data["user_name"] or "Unknown"
         reward = data["reward"]
@@ -143,26 +152,30 @@ class OngWatch_Twitch(Client):
 
         cost = AUTOMATIC_REWARD_COSTS[reward["type"]] / 100.0
 
+        self.logger.info(f"output redemption: {cost} for {user}")
         printsupport(ts=now(), supporter=user, type="Bits", amount=cost)
 
 
     async def on_hype_train_begin(self, data: eventsub.interaction.HypeTrainEvent):
-        log(f"TW: Hype train begin received: {data}")
+        self.logger.debug(f"Hype train begin received: {data}")
+        self.logger.info(f"output hype train begin")
         out("=== HYPE TRAIN BEGIN ===")
 
     # async def on_hype_train_progress(self, data: eventsub.interaction.HypeTrainEvent):
     #     log(f"INFO: Hype train progress received: {data}")
 
     async def on_hype_train_end(self, data: eventsub.interaction.HypeTrainEndEvent):
-        log(f"TW: Hype train end received: {data}")
+        self.logger.debug(f"Hype train end received: {data}")
+        self.logger.info(f"output hype train end (level={data['level']}, total={data['total']})")
         out(f"=== HYPE TRAIN END (level={data['level']}, total={data['total']}) ===")
 
+
     # async def on_ad_break_begin(self, data: eventsub.streams.AdBreakBeginEvent):
-    #     log(f"INFO: Ad break begin received: {data}")
+    #     self.logger.debug(f"Ad break begin received: {data}")
 
     # Incoming raid (for now, don't log outgoing raids)
     async def on_raid(self, data: eventsub.streams.RaidEvent):
-        log(f"TW: Raid received: {data}")
+        self.logger.debug(f"Raid received: {data}")
         if data["from_broadcaster_user_id"] == self.user.id:
             return
 
@@ -170,14 +183,18 @@ class OngWatch_Twitch(Client):
         to_user = data["to_broadcaster_user_name"]
         viewers = data["viewers"]
 
+        self.logger.info(f"output raid: {viewers} from {from_user}")
         printsupport(ts=now(), supporter=from_user, type=f"Raid - {viewers}", amount=0.0)
 
 
-async def start(args: argparse.Namespace, creds: Dict[str, str]) -> None:
+async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger) -> None:
+    if creds is None:
+        raise ValueError("No credentials specified")
+
     tokens = get_token(args.token_file)
 
-    log(f"Starting SE backend")
-
+    logger.info(f"Starting SE backend")
     client = OngWatch_Twitch(client_id=creds['client_id'], client_secret=creds['client_secret'],
-                      botargs=args, socket_debug=args.debug_socket, reconnect=True)
+                      botargs=args, logger=logger, socket_debug=False, reconnect=True)
+
     await client.start(access_token=tokens['token'], refresh_token=tokens["refresh"], reconnect=True)

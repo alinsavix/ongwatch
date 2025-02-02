@@ -2,12 +2,15 @@
 import argparse
 import asyncio
 import datetime
+import importlib
 import io
 import json
+# from loguru import logger
+import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Text
 
 import pytz
 import toml
@@ -19,16 +22,18 @@ import _ongwatch.streamlabs as streamlabs
 import _ongwatch.twitch as twitch
 from _ongwatch.util import log
 
+# FIXME: generate this dynamically?
+BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
 
-def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str, str]:
+
+def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str, str]|None:
     log(f"loading config from {cfgfile}")
     config = toml.load(cfgfile)
 
     try:
         return config[subsystem][environment]
     except KeyError:
-        log(f"ERROR: no configuration for streamelements.{environment} in credentials file")
-        sys.exit(1)
+        return None
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,6 +48,7 @@ def parse_args() -> argparse.Namespace:
         help="file with discord credentials"
     )
 
+    # FIXME: deal with this better -- it's twitch only (for now?)
     parser.add_argument(
         "--token-file", "-t",
         type=Path,
@@ -66,32 +72,20 @@ def parse_args() -> argparse.Namespace:
 
     # FIXME: the following should probably be per-backend
     parser.add_argument(
-        "--debug-socket",
-        default=False,
-        action="store_true",
-        help="output raw websocket messages as received"
+        "--debug-backend",
+        type=str,
+        action="append",
+        default=[],
+        help="enable debug logging for named backend"
     )
 
     parser.add_argument(
-        "--show-messages",
-        default=False,
-        action="store_true",
-        help="show all messages"
+        "--disable-backend",
+        type=str,
+        action="append",
+        default=[],
+        help="disable named backend"
     )
-
-    # parser.add_argument(
-    #     "--dbfile",
-    #     type=Path,
-    #     default=None,
-    #     help="database file to use"
-    # )
-
-    # parser.add_argument(
-    #     "--debug-queries",
-    #     default=False,
-    #     action="store_true",
-    #     help="print all queries to stderr",
-    # )
 
     parsed_args = parser.parse_args()
 
@@ -100,6 +94,8 @@ def parse_args() -> argparse.Namespace:
 
     if parsed_args.token_file is None:
         parsed_args.token_file = Path(__file__).parent / "user_token.json"
+
+    print(f"parsed_args.debug_backend: {parsed_args.debug_backend}")
 
     return parsed_args
 
@@ -112,32 +108,28 @@ async def main() -> int:
 
     args = parse_args()
 
-    log("INFO: Ongwatch is in startup")
+    logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
+    logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
-    # creds = get_credentials(args.credentials_file, args.environment)
-    # tokens = get_token(args.token_file)
+    enabled_backends = [b for b in BACKEND_LIST if b not in args.disable_backend]
 
-    log("INFO: Ongwatch is in startup")
-    # print(f"tokens: {tokens}")
-    # print(f"creds: {creds}")
+    logging.info("Ongwatch is in startup")
+    logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
 
     tasks: list[asyncio.Task] = []
 
-    tw_creds = get_credentials(args.credentials_file, "twitch", args.environment)
-    tasks.append(asyncio.create_task(twitch.start(args, tw_creds)))
-
-    se_creds = get_credentials(args.credentials_file, "streamelements", args.environment)
-    tasks.append(asyncio.create_task(streamelements.start(args, se_creds)))
-
-    sl_creds = get_credentials(args.credentials_file, "streamlabs", args.environment)
-    tasks.append(asyncio.create_task(streamlabs.start(args, sl_creds)))
-
-    # client = OngWatch(client_id=creds['client_id'], client_secret=creds['client_secret'],
-    #                   botargs=args, socket_debug=args.debug_socket)
+    for backend in enabled_backends:
+        creds = get_credentials(args.credentials_file, backend, args.environment)
+        module = importlib.import_module(f"_ongwatch.{backend}")
+        logger = logging.getLogger(f"{backend}")
+        if backend in args.debug_backend:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
+        tasks.append(asyncio.create_task(module.start(args, creds, logger)))
 
     # FIXME: what's the right way to exit cleanly(ish)?
-    # client.run(access_token=tokens['token'], refresh_token=tokens["refresh"], reconnect=True)
-
     await asyncio.gather(*tasks)
     return 0
 

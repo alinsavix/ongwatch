@@ -1,6 +1,7 @@
 # FIXME: switch to use astro, maybe?
 import argparse
 # import logging
+import logging
 from typing import Dict
 
 import socketio
@@ -13,9 +14,6 @@ from _ongwatch.util import log, now, out, printsupport
 # INFO: engineio.client: Received packet MESSAGE data 2["event", {"channel": "594a9f426e9dd856f439d15a", "provider": "twitch", "type": "tip", "createdAt": "2025-01-24T16:16:02.771Z", "isMock": true, "data": {"amount": 10, "avatar": "https://cdn.streamelements.com/assets/dashboard/my-overlays/overlay-default-preview-2.jpg", "displayName": "Clare", "username": "clare", "providerId": "156801396"}, "updatedAt": "2025-01-24T16:16:04.714Z", "_id": "6793bcc4dea98647a8967fe5", "activityId": "6793bcc4dea98647a8967fe5", "sessionEventsCount": 1}, {"ts": 1737735364714, "nonce": "d4a3589f-2f85-468e-b653-327f058f7263"}]
 # INFO: socketio.client: Received event "event" [/ ]
 
-
-class SEWebSocketClosure(Exception):
-    """Exception indicating closure of the WebSocket."""
 
 # class ReconnectWebSocket(Exception):
 #     """Exception indicating the need to reconnect to the websocket."""
@@ -71,14 +69,15 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
     botargs: argparse.Namespace
     token: str
 
-    def __init__(self, args: argparse.Namespace, token: str, namespace: str = '/') -> None:
+    def __init__(self, args: argparse.Namespace, logger: logging.Logger, token: str, namespace: str = '/') -> None:
         self.botargs = args
         self.token = token
+        self.logger = logger
 
         super().__init__(namespace)
 
     async def on_connect(self):
-        log('SE: connection established')
+        self.logger.info('connection established')
         # sio.emit('authenticate', {"method": "jwt", "token": JWT})
         # creds = get_credentials(Path('credentials.toml'), 'test')
         await self.emit('authenticate', {"method": "apikey", "token": self.token})
@@ -90,25 +89,20 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
 
 
     async def on_disconnect(self, reason="<no reason>"):
-        log(f'SE: disconnect reason: {reason}')
-
+        self.logger.warning(f'disconnect reason: {reason}')
 
     async def on_authenticated(self, data):
-        log(f"SE: Authenticated: {data}")
-        log(f"SE: Namespace: {self.namespace}")
+        self.logger.info(f"Authenticated: {data}")
+        # self.logger.info(f"Namespace: {self.namespace}")
         # await self.emit('subscribe', {"topic": "channel.follow"})
 
     async def on_connect_error(self, data):
-        log("SE: The connection failed!")
+        self.logger.error("The connection failed!")
 
     async def on_unauthorized(self, data):
-        log(f"SE: Unauthorized: {data}")
+        self.logger.error(f"Unauthorized: {data}")
 
     async def on_event(self, event, extra):
-        # log(f'XXX message received with"')
-        # log(f"arg1 (self): {ppretty(self)}")
-        # log(f"arg2 (zot): {ppretty(data)}")
-        # log(f"arg3 (data): {ppretty(extra)}")
         t = event['type']
 
         if t == "tip":
@@ -118,22 +112,13 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
                 type = "Tip"
             amount = event['data']['amount']
             user = event['data']['displayName']
-            # log(f'XXX {t} {amount} {user}')
+
             printsupport(now(), supporter=user, type=type, amount=amount)
+            self.logger.info(f"output tip: {amount} by {user}")
         else:
-            log(f"SE: Ignoring event of type {t}: {event}")
-        # sio.emit('my response', {'response': 'my response'})
+            self.logger.debug(f"Ignoring event of type {t}: {event}")
 
 
-
-
-# @sio.event
-# def tip(data):
-#     log(f"TIP: {data}")
-
-# @sio.on('*')
-# def catchall(msg):
-#     log(f"catchall: {msg}")
 
 # @sio.on('*')
 # def any_event(data):
@@ -143,17 +128,23 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
 # def message(data):
 #     log(f"Received message: {data}")
 
-async def start(args: argparse.Namespace, creds: Dict[str, str]):
-    if "apikey" in creds:
+async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger):
+    if creds is None:
+        raise ValueError("No credentials specified")
+    elif "apikey" in creds:
         token = creds["apikey"]
     elif "jwt" in creds:
         token = creds["jwt"]
     else:
         raise ValueError("No API key or JWT found in credentials")
 
-    log(f"Starting SE backend")
+    connect_url = "https://realtime.streamelements.com"
+    eiologger = logging.getLogger("streamelements.client")
+    eiologger.setLevel(logging.WARNING)
 
-    sio = socketio.AsyncClient(logger=False, engineio_logger=False, reconnection=True)
-    sio.register_namespace(OngWatch_SE(args, token, "/"))
-    await sio.connect('https://realtime.streamelements.com', transports=['websocket'], headers={"Content-Type": "application/json"})
+    sio = socketio.AsyncClient(logger=logger, engineio_logger=eiologger, reconnection=True)
+    sio.register_namespace(OngWatch_SE(args, logger, token, "/"))
+
+    logger.info(f"Starting Streamelements backend")
+    await sio.connect(connect_url, transports=["websocket"], headers={"Content-Type": "application/json"})
     await sio.wait()

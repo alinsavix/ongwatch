@@ -1,8 +1,30 @@
-# EventSub message examples
+# Twitch
+
+## Auth Tokens
+
+It is suggested we use the "device flow" authentication flow. An OAuth application
+needs to be created (it does not matter whose account owns this application), and
+then a utility needs to be run to execute the device flow. This application will
+specify a URL that needs to be given to the streamer. After the streamer goes to
+the URL and approves the connection, the utility will save the resulting tokens
+in a separate file (currently `user_token.json`).
+
+The OAuth client id and secret should be added to the "twitch" section of 
+`credentials.toml`, under the keys "client_id" and "client_secret".
+
+Tokens from the device auth flow do not expire as long as they are used at least
+once every 30 days.
+
+TBD: provide utility
+
+
+## Event examples (for EventSub)
+
 See https://dev.twitch.tv/docs/eventsub/eventsub-reference/ for reference
 
 
 ## Stream comes online
+
 ```python
 Event of type StreamOnlineEvent:
  twitchAPI.object.eventsub.StreamOnlineEvent(
@@ -23,7 +45,7 @@ Event of type StreamOnlineEvent:
                     year = 2025
                 ), 
             type = 'live'
-        ), 
+        ),
     subscription = twitchAPI.object.eventsub.Subscription(
             condition = {'broadcaster_user_id': '156801396'}, 
             cost = 0, 

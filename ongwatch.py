@@ -117,13 +117,14 @@ async def main() -> int:
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
 
+
     tasks: list[asyncio.Task] = []
 
     for backend in enabled_backends:
         creds = get_credentials(args.credentials_file, backend, args.environment)
         module = importlib.import_module(f"_ongwatch.{backend}")
         logger = logging.getLogger(f"{backend}")
-        if backend in args.debug_backend:
+        if backend in args.debug_backend or "all" in args.debug_backend:
             logger.setLevel(logging.DEBUG)
         else:
             logger.setLevel(logging.INFO)

@@ -87,9 +87,9 @@ class OngWatch_Twitch(Client):
         self.logger.info(f"Stream offline received: {data}")
         out("=== OFFLINE ===")
 
-    async def on_chat_message(self, data: eventsub.chat.MessageEvent):
-        if self.botargs.show_messages:
-            self.logger.debug(f"Chat message received: {data}")
+    # async def on_chat_message(self, data: eventsub.chat.MessageEvent):
+    #     if self.botargs.show_messages:
+    #         self.logger.debug(f"Chat message received: {data}")
 
     # This is kinda a train wreck -- the only way to get all the
     # info we need for logging subs/gift subs/resubs/etc, is to

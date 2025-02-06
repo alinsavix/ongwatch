@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -11,7 +12,7 @@ from tdvutil.argparse import CheckFile
 from twitch import Client
 from twitch.types import eventsub
 
-from _ongwatch.util import log, now, out, printsupport
+from _ongwatch.util import log, now, out, printextra, printsupport
 
 # Best I can tell, this info is simply not available from the API,
 # so we have to hardcode it. Units are in bits.
@@ -36,6 +37,7 @@ def get_token(token_file: Path) -> Dict[str, str]:
 class OngWatch_Twitch(Client):
     botargs: argparse.Namespace
     logger: logging.Logger
+    request_urls: Dict[str, str] = {}
 
     def __init__(self, client_id: str, client_secret: str, **options) -> None:
         if "botargs" in options:
@@ -87,9 +89,54 @@ class OngWatch_Twitch(Client):
         self.logger.info(f"Stream offline received: {data}")
         out("=== OFFLINE ===")
 
-    # async def on_chat_message(self, data: eventsub.chat.MessageEvent):
-    #     if self.botargs.show_messages:
-    #         self.logger.debug(f"Chat message received: {data}")
+    request_re = re.compile(r"""
+        ^@
+        (?P<user>\S+)
+        \s* -> \s*
+        "
+        (?P<title>.*)
+        " \s+ by \s+
+        (?P<ytname>.*)
+        \s+
+        has.been.added.to.the.queue
+    """, re.VERBOSE)
+
+    # FIXME: should we pass this already extracted fields?
+    async def handle_nightbot(self, data: eventsub.chat.MessageEvent):
+        chatmsg = data.get("message", {}).get("text", "")
+        m = self.request_re.match(chatmsg)
+        if not m:
+            self.logger.debug(f"Got a message from nightbot, but not one we care about: {chatmsg}")
+            return
+
+        user = m.group("user")
+        req_url = self.request_urls.get(user, "")
+        title = m.group("ytname")
+
+        linkstr = f'=HYPERLINK("{req_url}", "{title}")'
+        printextra(ts=now(), message=f"SONG REQUEST FROM {user}: {linkstr}")
+        del self.request_urls[user]
+
+
+    # FIXME: split chat message handling somehow, not sure what makes sense
+    async def on_chat_message(self, data: eventsub.chat.MessageEvent):
+        self.logger.debug(f"Chat notification received: {data}")
+
+        chatmsg = data.get("message", {}).get("text", "")
+
+        # For !sr handling, we need to track the requester when they make the
+        # request, since the nightbot response doesn't actually include the URL.
+        if chatmsg.startswith("!sr "):
+            user = data.get("chatter_user_name", "UnknownUser")
+            req_url = chatmsg.split(" ")[1]
+
+            self.request_urls[user] = req_url
+            self.logger.debug(f"Saved song request from {user}: {req_url}")
+            return
+
+        if data.get("chatter_user_name") == "Nightbot":
+            await self.handle_nightbot(data)
+
 
     # This is kinda a train wreck -- the only way to get all the
     # info we need for logging subs/gift subs/resubs/etc, is to

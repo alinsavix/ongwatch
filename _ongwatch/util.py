@@ -47,6 +47,16 @@ def printsupport(ts: int, gifter: str = "", supporter: str = "", type: str = "",
     sys.stderr.flush()
 
 
+def printextra(ts: int, message: str):
+    message = message.strip()
+    print("  " + message + "\n", file=sys.stdout)
+    sys.stdout.flush()
+
+    # FIXME: super sloppy
+    print("  " + message + "\n", file=sys.stderr)
+    sys.stderr.flush()
+
+
 async def get_json_url(url) -> Dict[str, Any]:
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:

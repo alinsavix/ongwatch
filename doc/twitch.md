@@ -2978,3 +2978,94 @@ Event of type ChannelChatNotificationEvent:
         ),
 )
 ```
+
+## Nightbot queue
+
+```python
+chat message: {
+    'broadcaster_user_id': '156801396',
+    'broadcaster_user_login': 'jonathanong',
+    'broadcaster_user_name': 'JonathanOng',
+    'source_broadcaster_user_id': None,
+    'source_broadcaster_user_login': None,
+    'source_broadcaster_user_name': None,
+    'chatter_user_id': '129765209',
+    'chatter_user_login': 'alinsa_vix',
+    'chatter_user_name': 'alinsa_vix',
+    'message_id': '1dc6661d-a538-48f7-88b7-81a2748b3d8e',
+    'source_message_id': None,
+    'message': {
+            'text': '!sr https://youtu.be/CC9dhi4fqsc',
+            'fragments': [
+                    {
+                        'type': 'text',
+                        'text': '!sr https://youtu.be/CC9dhi4fqsc',
+                        'cheermote': None,
+                        'emote': None,
+                        'mention': None
+                    }
+                ]
+        },
+    'color': '#47D970',
+    'badges': [
+            {'set_id': 'moderator', 'id': '1', 'info': ''},
+            {'set_id': 'subscriber', 'id': '3048', 'info': '59'},
+            {'set_id': 'bits-leader', 'id': '3', 'info': ''}
+        ],
+    'source_badges': None,
+    'message_type': 'text',
+    'cheer': None,
+    'reply': None,
+    'channel_points_custom_reward_id': None,
+    'channel_points_animation_id': None
+}
+```
+
+...which begets...
+
+```python
+chat message: {
+    'broadcaster_user_id': '156801396',
+    'broadcaster_user_login': 'jonathanong',
+    'broadcaster_user_name': 'JonathanOng',
+    'source_broadcaster_user_id': None,
+    'source_broadcaster_user_login': None,
+    'source_broadcaster_user_name': None,
+    'chatter_user_id': '19264788',
+    'chatter_user_login': 'nightbot',
+    'chatter_user_name': 'Nightbot',
+    'message_id': '8969c65a-19db-4a28-be21-b3dc09969311',
+    'source_message_id': None,
+    'message': {
+            'text': '@alinsa_vix -> "Golden age of video — By Ricardo Autobahn [Remastered]" by qbz32 has been added to the queue in position #3',
+            'fragments': [
+                    {
+                        'type': 'mention',
+                        'text': '@alinsa_vix',
+                        'cheermote': None,
+                        'emote': None,
+                        'mention': {...}
+                    },
+                    {
+                        'type': 'text',
+                        'text': ' -> "Golden age of video — By Ricardo Autobahn [Remastered]" by qbz32 has been added to the queue in position #3',
+                        'cheermote': None,
+                        'emote': None,
+                        'mention': None
+                    }
+                ]
+        },
+    'color': '#7C7CE1',
+    'badges': [
+            {'set_id': 'moderator', 'id': '1', 'info': ''},
+            {'set_id': 'subscriber', 'id': '3084', 'info': '87'},
+            {'set_id': 'partner', 'id': '1', 'info': ''}
+        ],
+    'source_badges': None,
+    'message_type': 'text',
+    'cheer': None,
+    'reply': None,
+    'channel_points_custom_reward_id': None,
+    'channel_points_animation_id': None
+}
+```

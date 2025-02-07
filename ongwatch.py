@@ -1,39 +1,39 @@
 #!/usr/bin/env python
 import argparse
 import asyncio
-import datetime
 import importlib
 import io
-import json
-# from loguru import logger
 import logging
 import sys
-import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Text
 
-import pytz
-import toml
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
-import _ongwatch.streamelements as streamelements
-import _ongwatch.streamlabs as streamlabs
-import _ongwatch.twitch as twitch
-from _ongwatch.util import log
+from _ongwatch.util import get_credentials
 
 # FIXME: generate this dynamically?
 BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
 
-
-def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str, str]|None:
-    log(f"loading config from {cfgfile}")
-    config = toml.load(cfgfile)
+async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.Logger) -> int:
+    logger.setLevel(logging.WARNING)  # quiet things down
+    creds = get_credentials(args.credentials_file, backend, args.environment)
+    if creds is None:
+        logger.error(f"No credentials found for {backend}")
+        return 1
 
     try:
-        return config[subsystem][environment]
-    except KeyError:
-        return None
+        module = importlib.import_module(f"_ongwatch.auth.{backend}")
+    except ModuleNotFoundError as e:
+        logger.error(f"No such backend '{backend}': {e}")
+        return 1
+
+    if "auth" not in dir(module):
+        logger.error(f"No auth handler available for Backend '{backend}'")
+        return 1
+
+    return await module.auth(args, creds, logging.getLogger(args.auth))
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,12 +56,12 @@ def parse_args() -> argparse.Namespace:
         help="file to store twitch credentials"
     )
 
-    # parser.add_argument(
-    #     "--auth-only", "--auth",
-    #     default=False,
-    #     action="store_true",
-    #     help="only authenticate, then exit"
-    # )
+    parser.add_argument(
+        "--auth",
+        type=str,
+        default=None,
+        help="do authentication flow for a given backend"
+    )
 
     parser.add_argument(
         "--environment", "--env",
@@ -93,11 +93,10 @@ def parse_args() -> argparse.Namespace:
         parsed_args.credentials_file = Path(__file__).parent / "credentials.toml"
 
     if parsed_args.token_file is None:
-        parsed_args.token_file = Path(__file__).parent / "user_token.json"
-
-    print(f"parsed_args.debug_backend: {parsed_args.debug_backend}")
+        parsed_args.token_file = Path(__file__).parent / f"twitch_user_token.{parsed_args.environment}.json"
 
     return parsed_args
+
 
 
 async def main() -> int:
@@ -112,15 +111,20 @@ async def main() -> int:
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
     logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
+    if args.auth is not None:
+        return await do_auth_flow(args, args.auth, logging.getLogger(f"auth.{args.auth}"))
+
+    # Else, do a normal startup
     enabled_backends = [b for b in BACKEND_LIST if b not in args.disable_backend]
 
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
 
-
     tasks: list[asyncio.Task] = []
 
     for backend in enabled_backends:
+        logging.info(f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
+
         creds = get_credentials(args.credentials_file, backend, args.environment)
         module = importlib.import_module(f"_ongwatch.{backend}")
         logger = logging.getLogger(f"{backend}")

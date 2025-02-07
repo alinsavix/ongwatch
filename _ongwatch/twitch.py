@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Dict
 
 from tdvutil import ppretty
-from tdvutil.argparse import CheckFile
 from twitch import Client
 from twitch.types import eventsub
 
@@ -240,7 +239,7 @@ async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: lo
 
     tokens = get_token(args.token_file)
 
-    logger.info(f"Starting SE backend")
+    logger.info(f"Starting Twitch backend")
     client = OngWatch_Twitch(client_id=creds['client_id'], client_secret=creds['client_secret'],
                       botargs=args, logger=logger, socket_debug=False, reconnect=True)
 

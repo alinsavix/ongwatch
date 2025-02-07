@@ -1,4 +1,5 @@
 import datetime
+import logging
 import sys
 import time
 from pathlib import Path
@@ -65,3 +66,13 @@ async def get_json_url(url) -> Dict[str, Any]:
 
             # else
             return await response.json()
+
+
+def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str, str] | None:
+    config = toml.load(cfgfile)
+
+    try:
+        return config[subsystem][environment]
+    except KeyError:
+        logging.error(f"no config found for '{subsystem}.{environment}'")
+        return None

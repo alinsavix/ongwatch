@@ -109,8 +109,9 @@ class OngWatch_Twitch(Client):
             return
 
         user = m.group("user")
+        # ytname = m.group("ytname")
+        title = m.group("title")
         req_url = self.request_urls.get(user, "")
-        title = m.group("ytname")
 
         linkstr = f'=HYPERLINK("{req_url}", "{title}")'
         printextra(ts=now(), message=f"SONG REQUEST FROM {user}: {linkstr}")

@@ -43,9 +43,9 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
         t = event["type"]
 
         if t == "donation":
-            amount = event["message"][0]["amount"]
+            amount = float(event["message"][0]["amount"])
             user = event["message"][0]["from"]
-            if event["message"][0]["isTest"]:
+            if event["message"][0].get("isTest", False):
                 type = "Tip_TEST"
             else:
                 type = "Tip"

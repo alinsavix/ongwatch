@@ -2,6 +2,7 @@
 credentials.toml
 gsheets_credentials.json
 user_token*.json
+*_user_token.*.json
 
 # sqlite stuffs
 *.db

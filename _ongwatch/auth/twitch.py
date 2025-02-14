@@ -3,10 +3,11 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 from tdvutil import ppretty
 from twitch import Client
+from twitch.errors import HTTPException
 from twitch.ext.oauth import DeviceAuthFlow, Scopes
 
 USER_SCOPES: List[str | Scopes] = [
@@ -49,13 +50,13 @@ USER_SCOPES: List[str | Scopes] = [
 # FIXME: dedupe this
 def get_token(token_file: Path) -> Dict[str, str]:
     with open(token_file, 'r') as f:
-        return json.load(f)
+        return cast(Dict[str, str], json.load(f))
 
 
 class TwitchAuth(Client):
     botargs: argparse.Namespace
 
-    def __init__(self, args: argparse.Namespace, client_id: str, client_secret: str, **options) -> None:
+    def __init__(self, args: argparse.Namespace, client_id: str, client_secret: str, **options: Any) -> None:
         self.botargs = args
         super().__init__(client_id, client_secret, **options)
         self.auth_flow = DeviceAuthFlow(
@@ -94,7 +95,7 @@ class TwitchAuth(Client):
         await self.custom_auth_flow()
 
 
-async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: logging.Logger) -> None:
+async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: logging.Logger) -> bool:
     if creds is None:
         raise ValueError("No credentials specified")
 
@@ -103,4 +104,13 @@ async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: l
     client = TwitchAuth(args, client_id=creds['client_id'], client_secret=creds['client_secret'],
                         logger=logger)
 
-    await client.run_client()
+    try:
+        await client.run_client()
+    except HTTPException as e:
+        logger.error(f"Unable to complete auth flow, HTTP error: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unable to complete auth flow, unhandled exception: {e}")
+        return False
+
+    return True

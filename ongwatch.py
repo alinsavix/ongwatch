@@ -6,34 +6,40 @@ import io
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Text
+from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
+                    cast)
+
+from _ongwatch.util import get_credentials
 
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
-from _ongwatch.util import get_credentials
-
 # FIXME: generate this dynamically?
 BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
+
+# FIXME: define these in a backend module or similar
+BackendAuthHandler = Callable[[argparse.Namespace, Dict[str, str] | None, logging.Logger], Coroutine[None, None, bool]]
+BackendStartHandler = Callable[[argparse.Namespace, Dict[str, str] | None, logging.Logger], Coroutine[None, None, None]]
 
 async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.Logger) -> int:
     logger.setLevel(logging.WARNING)  # quiet things down
     creds = get_credentials(args.credentials_file, backend, args.environment)
     if creds is None:
         logger.error(f"No credentials found for {backend}")
-        return 1
+        return False
 
     try:
         module = importlib.import_module(f"_ongwatch.auth.{backend}")
     except ModuleNotFoundError as e:
         logger.error(f"No such backend '{backend}': {e}")
-        return 1
+        return False
 
     if "auth" not in dir(module):
         logger.error(f"No auth handler available for Backend '{backend}'")
-        return 1
+        return False
 
-    return await module.auth(args, creds, logging.getLogger(args.auth))
+    authfunc: BackendAuthHandler = module.auth
+    return await authfunc(args, creds, logging.getLogger(args.auth))
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,8 +108,10 @@ def parse_args() -> argparse.Namespace:
 async def main() -> int:
     # make sure our output streams are properly encoded so that we can
     # not screw up Frédéric Chopin's name and such.
-    sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding="utf-8", line_buffering=True)
-    sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding="utf-8", line_buffering=True)
+    #
+    # FIXME: the typing on this is kinda ugly, see if we can figure out better
+    sys.stdout = io.TextIOWrapper(cast(io.TextIOBase, sys.stdout).detach(), encoding="utf-8", line_buffering=True)
+    sys.stderr = io.TextIOWrapper(cast(io.TextIOBase, sys.stderr).detach(), encoding="utf-8", line_buffering=True)
 
     args = parse_args()
 
@@ -120,7 +128,7 @@ async def main() -> int:
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
 
-    tasks: list[asyncio.Task] = []
+    tasks: list[asyncio.Task[None]] = []
 
     for backend in enabled_backends:
         logging.info(f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
@@ -132,7 +140,9 @@ async def main() -> int:
             logger.setLevel(logging.DEBUG)
         else:
             logger.setLevel(logging.INFO)
-        tasks.append(asyncio.create_task(module.start(args, creds, logger)))
+
+        startfunc: BackendStartHandler = module.start
+        tasks.append(asyncio.create_task(startfunc(args, creds, logger)))
 
     # FIXME: what's the right way to exit cleanly(ish)?
     await asyncio.gather(*tasks)

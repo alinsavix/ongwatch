@@ -2,14 +2,15 @@
 import argparse
 # import logging
 import logging
-from typing import Dict
+from typing import Any, Dict
+
+from _ongwatch.util import log, now, out, printsupport
 
 import socketio
 from tdvutil import ppretty
 
-from _ongwatch.util import log, now, out, printsupport
 
-
+# FIXME: many of the handlers need their arguments to be properly typed
 class OngWatch_SE(socketio.AsyncClientNamespace):
     botargs: argparse.Namespace
     token: str
@@ -21,27 +22,27 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
 
         super().__init__(namespace)
 
-    async def on_connect(self):
+    async def on_connect(self) -> None:
         self.logger.info('connection established')
         # sio.emit('authenticate', {"method": "jwt", "token": JWT})
         # creds = get_credentials(Path('credentials.toml'), 'test')
         await self.emit('authenticate', {"method": "apikey", "token": self.token})
 
-    async def on_disconnect(self, reason="<no reason>"):
+    async def on_disconnect(self, reason: str = "<no reason>") -> None:
         self.logger.warning(f'disconnect reason: {reason}')
 
-    async def on_authenticated(self, data):
+    async def on_authenticated(self, data: Any) -> None:
         self.logger.info(f"Authenticated: {data}")
         # self.logger.info(f"Namespace: {self.namespace}")
         # await self.emit('subscribe', {"topic": "channel.follow"})
 
-    async def on_connect_error(self, data):
+    async def on_connect_error(self, data: Any) -> None:
         self.logger.error("The connection failed!")
 
-    async def on_unauthorized(self, data):
+    async def on_unauthorized(self, data: Any) -> None:
         self.logger.error(f"Unauthorized: {data}")
 
-    async def on_event(self, event, extra):
+    async def on_event(self, event: Any, extra: Any) -> None:
         t = event['type']
 
         if t == "tip":
@@ -49,9 +50,8 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
                 type = "Tip_TEST"
             else:
                 type = "Tip"
-            amount = event['data']['amount']
-            user = event['data']['displayName']
-
+            amount = float(event['data'].get("amount", 0.0))
+            user = event['data'].get("displayName", "UnknownUser")
             printsupport(now(), supporter=user, type=type, amount=amount)
             self.logger.info(f"output tip: {amount} by {user}")
         else:
@@ -67,7 +67,7 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
 # def message(data):
 #     log(f"Received message: {data}")
 
-async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger):
+async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger) -> None:
     if creds is None:
         raise ValueError("No credentials specified")
     elif "apikey" in creds:

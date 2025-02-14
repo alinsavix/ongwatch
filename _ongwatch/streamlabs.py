@@ -4,12 +4,13 @@ import argparse
 import logging
 from typing import Any, Dict
 
+from _ongwatch.util import get_json_url, log, now, out, printsupport
+
 import socketio
 from tdvutil import ppretty
 
-from _ongwatch.util import get_json_url, log, now, out, printsupport
 
-
+# FIXME: many of the handlers need their arguments to be properly typed
 class OngWatch_SL(socketio.AsyncClientNamespace):
     botargs: argparse.Namespace
     info: Dict[str, Any]|None
@@ -22,10 +23,10 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
 
         super().__init__(namespace)
 
-    async def on_connect(self):
+    async def on_connect(self) -> None:
         self.logger.info('connection established')
 
-    async def on_disconnect(self, reason="<no reason>"):
+    async def on_disconnect(self, reason: str = "<no reason>") -> None:
         self.logger.warning(f'disconnect reason: {reason}')
 
     # async def on_authenticated(self, data):
@@ -33,18 +34,18 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
     #     self.logger.warning(f"Namespace: {self.namespace}")
     #     # await self.emit('subscribe', {"topic": "channel.follow"})
 
-    async def on_connect_error(self, data):
+    async def on_connect_error(self, data: Any) -> None:
         self.logger.error(f"SL: The connection failed: {data}")
 
-    async def on_unauthorized(self, data):
+    async def on_unauthorized(self, data: Any) -> None:
         self.logger.error(f"SL: Unauthorized: {data}")
 
-    async def on_event(self, event, extra=None):
+    async def on_event(self, event: Any, extra: Any = None) -> None:
         t = event["type"]
 
         if t == "donation":
-            amount = float(event["message"][0]["amount"])
-            user = event["message"][0]["from"]
+            amount = float(event["message"][0].get("amount", 0.0))
+            user = event["message"][0].get("from", "UnknownUser")
             if event["message"][0].get("isTest", False):
                 type = "Tip_TEST"
             else:
@@ -64,7 +65,7 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
 #     log(f"Received message: {data}")
 
 # FIXME: support socket tokens, not this ghetto undocumented thing
-async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger):
+async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger) -> None:
     if creds is None:
         raise ValueError("No credentials specified")
 

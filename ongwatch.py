@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
                     cast)
 
-from _ongwatch.util import get_credentials
-
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
+
+from _ongwatch.util import get_credentials
 
 # FIXME: generate this dynamically?
 BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
@@ -76,6 +76,13 @@ def parse_args() -> argparse.Namespace:
         help="environment to use"
     )
 
+    parser.add_argument(
+        "--debug-asyncio",
+        action="store_true",
+        default=False,
+        help="enable debugging of asyncio"
+    )
+
     # FIXME: the following should probably be per-backend
     parser.add_argument(
         "--debug-backend",
@@ -104,24 +111,7 @@ def parse_args() -> argparse.Namespace:
     return parsed_args
 
 
-
-async def main() -> int:
-    # make sure our output streams are properly encoded so that we can
-    # not screw up Frédéric Chopin's name and such.
-    #
-    # FIXME: the typing on this is kinda ugly, see if we can figure out better
-    sys.stdout = io.TextIOWrapper(cast(io.TextIOBase, sys.stdout).detach(), encoding="utf-8", line_buffering=True)
-    sys.stderr = io.TextIOWrapper(cast(io.TextIOBase, sys.stderr).detach(), encoding="utf-8", line_buffering=True)
-
-    args = parse_args()
-
-    logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
-    logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
-    logging.getLogger("asyncio").setLevel(logging.DEBUG)
-
-    if args.auth is not None:
-        return await do_auth_flow(args, args.auth, logging.getLogger(f"auth.{args.auth}"))
-
+async def async_main(args: argparse.Namespace) -> int:
     # Else, do a normal startup
     enabled_backends = [b for b in BACKEND_LIST if b not in args.disable_backend]
 
@@ -131,7 +121,8 @@ async def main() -> int:
     tasks: list[asyncio.Task[None]] = []
 
     for backend in enabled_backends:
-        logging.info(f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
+        logging.info(
+            f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
 
         creds = get_credentials(args.credentials_file, backend, args.environment)
         module = importlib.import_module(f"_ongwatch.{backend}")
@@ -149,5 +140,29 @@ async def main() -> int:
     return 0
 
 
+def main() -> int:
+    # make sure our output streams are properly encoded so that we can
+    # not screw up Frédéric Chopin's name and such.
+    #
+    # FIXME: the typing on this is kinda ugly, see if we can figure out better
+    sys.stdout = io.TextIOWrapper(cast(io.TextIOBase, sys.stdout).detach(), encoding="utf-8", line_buffering=True)
+    sys.stderr = io.TextIOWrapper(cast(io.TextIOBase, sys.stderr).detach(), encoding="utf-8", line_buffering=True)
+
+    args = parse_args()
+
+    logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
+
+    # FIXME: is this the same as calling asyncio.run() with debug=True?
+    # logging.getLogger("asyncio").setLevel(logging.DEBUG)
+
+    if args.auth is not None:
+        return asyncio.run(do_auth_flow(args, args.auth, logging.getLogger(f"auth.{args.auth}")), debug=args.debug_asyncio)
+
+    # else, run the main loop
+    return asyncio.run(async_main(args), debug=args.debug_asyncio)
+
+
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    # sys.exit(asyncio.run(main(), debug=True))
+    sys.exit(main())

@@ -12,6 +12,7 @@ from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
+import _ongwatch.backends as backends
 from _ongwatch.util import get_credentials
 
 # FIXME: generate this dynamically?
@@ -29,7 +30,7 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
         return False
 
     try:
-        module = importlib.import_module(f"_ongwatch.auth.{backend}")
+        module = backends.get_backend(f"auth.{backend}")
     except ModuleNotFoundError as e:
         logger.error(f"No such backend '{backend}': {e}")
         return False
@@ -113,7 +114,7 @@ def parse_args() -> argparse.Namespace:
 
 async def async_main(args: argparse.Namespace) -> int:
     # Else, do a normal startup
-    enabled_backends = [b for b in BACKEND_LIST if b not in args.disable_backend]
+    enabled_backends = [b for b in backends.backend_list() if b not in args.disable_backend]
 
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
@@ -125,7 +126,7 @@ async def async_main(args: argparse.Namespace) -> int:
             f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
 
         creds = get_credentials(args.credentials_file, backend, args.environment)
-        module = importlib.import_module(f"_ongwatch.{backend}")
+        module = backends.get_backend(backend)
         logger = logging.getLogger(f"{backend}")
         if backend in args.debug_backend or "all" in args.debug_backend:
             logger.setLevel(logging.DEBUG)

@@ -4,10 +4,10 @@ import argparse
 import logging
 from typing import Any, Dict
 
-from _ongwatch.util import get_json_url, log, now, out, printsupport
-
 import socketio
 from tdvutil import ppretty
+
+from _ongwatch.util import get_json_url, log, now, out, printsupport
 
 
 # FIXME: many of the handlers need their arguments to be properly typed

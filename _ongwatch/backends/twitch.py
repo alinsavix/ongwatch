@@ -72,6 +72,7 @@ class OngWatch_Twitch(Client):
 
         self.logger.info("Client is ready")
         self.logger.info(f"User: {self.user.display_name} ({self.user.id})")
+        self.logger.info(f"{self.total_subscription_cost} of {self.max_subscription_cost} subscription points used")
         self.logger.info(f"channel liveness: {await self.channel.stream.get_live()}")
 
         # total_subs = await self.channel.get_total_subscriptions()
@@ -252,8 +253,9 @@ async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: lo
         await client.start(access_token=tokens['token'], refresh_token=tokens["refresh"], reconnect=True)
     except HTTPException as e:
         logger.error(f"Unable to connect to twitch, HTTP error: {e}")
-        return
+        raise
     except Exception as e:
-        logger.error(f"Unhandled exception: {e}")
-        # raise
-        return
+        logger.error(f"exception: {e}")
+        raise
+    finally:
+        await client.close()

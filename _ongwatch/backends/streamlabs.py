@@ -79,6 +79,12 @@ async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: lo
     sio = socketio.AsyncClient(logger=logger, engineio_logger=eiologger, reconnection=True)
     sio.register_namespace(OngWatch_SL(args, logger, info, "/"))
 
-    logger.info(f"Starting Streamlabs backend")
-    await sio.connect(connect_url, transports=['websocket'], headers={"Content-Type": "application/json"})
-    await sio.wait()
+    try:
+        logger.info(f"Starting Streamlabs backend")
+        await sio.connect(connect_url, transports=['websocket'], headers={"Content-Type": "application/json"})
+        await sio.wait()
+    except Exception as e:
+        logger.error(f"exception: {e}")
+        raise
+    finally:
+        await sio.disconnect()

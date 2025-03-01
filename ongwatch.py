@@ -4,6 +4,8 @@ import asyncio
 import importlib
 import io
 import logging
+import platform
+import signal
 import sys
 from pathlib import Path
 from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
@@ -148,8 +150,41 @@ async def async_main(args: argparse.Namespace) -> int:
         startfunc: BackendStartHandler = module.start
         tasks.append(asyncio.create_task(startfunc(args, creds, logger)))
 
-    # FIXME: what's the right way to exit cleanly(ish)?
-    await asyncio.gather(*tasks)
+    shutdown_event = asyncio.Event()
+    shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+    # Setup Windows-compatible keyboard interrupt handler
+    def handle_interrupt():
+        asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
+
+    loop = asyncio.get_event_loop()
+    if platform.system() != "Windows":
+        loop.add_signal_handler(signal.SIGINT, handle_interrupt)
+        loop.add_signal_handler(signal.SIGTERM, handle_interrupt)
+    else:
+        # Windows doesn't support loop.add_signal_handler
+        signal.signal(signal.SIGINT, lambda signum, frame: handle_interrupt())
+        signal.signal(signal.SIGTERM, lambda signum, frame: handle_interrupt())
+
+    # from tdvutil import alintrospect
+    # alintrospect(waits)
+    # alintrospect(tasks[0])
+
+    try:
+        # await asyncio.wait()
+        done, pending = await asyncio.wait(
+            [shutdown_task, *tasks],
+            return_when=asyncio.FIRST_COMPLETED
+            )
+    finally:
+        logging.info("Shutting down...")
+        # Cancel all running tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        # Wait for all tasks to be cancelled
+        await asyncio.gather(*tasks, return_exceptions=True)
+
     return 0
 
 

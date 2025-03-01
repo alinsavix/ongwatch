@@ -94,6 +94,14 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--enable-backend",
+        type=str,
+        action="append",
+        default=[],
+        help="enable named backend"
+    )
+
+    parser.add_argument(
         "--disable-backend",
         type=str,
         action="append",
@@ -113,8 +121,12 @@ def parse_args() -> argparse.Namespace:
 
 
 async def async_main(args: argparse.Namespace) -> int:
-    # Else, do a normal startup
-    enabled_backends = [b for b in backends.backend_list() if b not in args.disable_backend]
+    if not args.enable_backend or args.enable_backend == ["all"]:
+        enabled_backends = backends.backend_list()
+    else:
+        enabled_backends = args.enable_backend
+
+    enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
 
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {" ".join(enabled_backends)}")

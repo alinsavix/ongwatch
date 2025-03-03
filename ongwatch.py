@@ -45,6 +45,72 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     return await authfunc(args, creds, logging.getLogger(args.auth))
 
 
+async def async_main(args: argparse.Namespace) -> int:
+    if not args.enable_backend or args.enable_backend == ["all"]:
+        enabled_backends = backends.backend_list()
+    else:
+        enabled_backends = args.enable_backend
+
+    enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
+
+    logging.info("Ongwatch is in startup")
+    logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
+
+    tasks: list[asyncio.Task[None]] = []
+
+    for backend in enabled_backends:
+        logging.info(
+            f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
+
+        creds = get_credentials(args.credentials_file, backend, args.environment)
+        module = backends.get_backend(backend)
+        logger = logging.getLogger(f"{backend}")
+        if backend in args.debug_backend or "all" in args.debug_backend:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
+
+        startfunc: BackendStartHandler = module.start
+        tasks.append(asyncio.create_task(startfunc(args, creds, logger)))
+
+    shutdown_event = asyncio.Event()
+    shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+    # Setup Windows-compatible keyboard interrupt handler
+    def handle_interrupt():
+        asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
+
+    loop = asyncio.get_event_loop()
+    if platform.system() != "Windows":
+        loop.add_signal_handler(signal.SIGINT, handle_interrupt)
+        loop.add_signal_handler(signal.SIGTERM, handle_interrupt)
+    else:
+        # Windows doesn't support loop.add_signal_handler
+        signal.signal(signal.SIGINT, lambda signum, frame: handle_interrupt())
+        signal.signal(signal.SIGTERM, lambda signum, frame: handle_interrupt())
+
+    # from tdvutil import alintrospect
+    # alintrospect(waits)
+    # alintrospect(tasks[0])
+
+    try:
+        # await asyncio.wait()
+        done, pending = await asyncio.wait(
+            [shutdown_task, *tasks],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+    finally:
+        logging.info("Shutting down...")
+        # Cancel all running tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        # Wait for all tasks to be cancelled
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Share to discord some of the stream things that have happened")
@@ -120,72 +186,6 @@ def parse_args() -> argparse.Namespace:
         parsed_args.token_file = Path(__file__).parent / f"twitch_user_token.{parsed_args.environment}.json"
 
     return parsed_args
-
-
-async def async_main(args: argparse.Namespace) -> int:
-    if not args.enable_backend or args.enable_backend == ["all"]:
-        enabled_backends = backends.backend_list()
-    else:
-        enabled_backends = args.enable_backend
-
-    enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
-
-    logging.info("Ongwatch is in startup")
-    logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
-
-    tasks: list[asyncio.Task[None]] = []
-
-    for backend in enabled_backends:
-        logging.info(
-            f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
-
-        creds = get_credentials(args.credentials_file, backend, args.environment)
-        module = backends.get_backend(backend)
-        logger = logging.getLogger(f"{backend}")
-        if backend in args.debug_backend or "all" in args.debug_backend:
-            logger.setLevel(logging.DEBUG)
-        else:
-            logger.setLevel(logging.INFO)
-
-        startfunc: BackendStartHandler = module.start
-        tasks.append(asyncio.create_task(startfunc(args, creds, logger)))
-
-    shutdown_event = asyncio.Event()
-    shutdown_task = asyncio.create_task(shutdown_event.wait())
-
-    # Setup Windows-compatible keyboard interrupt handler
-    def handle_interrupt():
-        asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
-
-    loop = asyncio.get_event_loop()
-    if platform.system() != "Windows":
-        loop.add_signal_handler(signal.SIGINT, handle_interrupt)
-        loop.add_signal_handler(signal.SIGTERM, handle_interrupt)
-    else:
-        # Windows doesn't support loop.add_signal_handler
-        signal.signal(signal.SIGINT, lambda signum, frame: handle_interrupt())
-        signal.signal(signal.SIGTERM, lambda signum, frame: handle_interrupt())
-
-    # from tdvutil import alintrospect
-    # alintrospect(waits)
-    # alintrospect(tasks[0])
-
-    try:
-        # await asyncio.wait()
-        done, pending = await asyncio.wait(
-            [shutdown_task, *tasks],
-            return_when=asyncio.FIRST_COMPLETED
-            )
-    finally:
-        logging.info("Shutting down...")
-        # Cancel all running tasks
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        # Wait for all tasks to be cancelled
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-    return 0
 
 
 def main() -> int:

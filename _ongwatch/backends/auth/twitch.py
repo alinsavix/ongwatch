@@ -53,6 +53,11 @@ def get_token(token_file: Path) -> Dict[str, str]:
         return cast(Dict[str, str], json.load(f))
 
 
+def write_token(token_file: Path, token: Dict[str, str]) -> None:
+    with open(token_file, 'w') as f:
+        json.dump(token, f)
+
+
 class TwitchAuth(Client):
     botargs: argparse.Namespace
 
@@ -86,9 +91,7 @@ class TwitchAuth(Client):
                 sys.exit(1)
 
         # write the access token and refresh token to a file
-        with open(self.botargs.token_file, 'w') as f:
-            f.write(json.dumps({'token': access_token, 'refresh': refresh_token}))
-
+        write_token(self.botargs.token_file, {'token': access_token, 'refresh': refresh_token})
         print(f"\nSuccess, written to {self.botargs.token_file}")
 
     async def run_client(self) -> None:
@@ -99,10 +102,9 @@ async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: l
     if creds is None:
         raise ValueError("No credentials specified")
 
-    tokens = get_token(args.token_file)
-
+    climode = True if args.environment == 'localdev' else False
     client = TwitchAuth(args, client_id=creds['client_id'], client_secret=creds['client_secret'],
-                        logger=logger)
+                        logger=logger, cli=climode)
 
     try:
         await client.run_client()

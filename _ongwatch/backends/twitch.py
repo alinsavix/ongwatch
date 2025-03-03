@@ -244,10 +244,11 @@ async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: lo
         raise ValueError("No credentials specified")
 
     tokens = get_token(args.token_file)
+    climode = True if args.environment == 'localdev' else False
 
     logger.info(f"Starting Twitch backend")
     client = OngWatch_Twitch(client_id=creds['client_id'], client_secret=creds['client_secret'],
-                      botargs=args, logger=logger, socket_debug=False, reconnect=True)
+                      botargs=args, logger=logger, socket_debug=False, reconnect=True, cli=climode)
 
     try:
         await client.start(access_token=tokens['token'], refresh_token=tokens["refresh"], reconnect=True)

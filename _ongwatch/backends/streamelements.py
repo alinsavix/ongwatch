@@ -44,14 +44,13 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
 
     async def on_event(self, event: Any, extra: Any) -> None:
         t = event['type']
-
         if t == "tip":
             if event.get("isMock", False):
                 type = "Tip_TEST"
             else:
                 type = "Tip"
             amount = float(event['data'].get("amount", 0.0))
-            user = event['data'].get("displayName", "UnknownUser")
+            user = event['data'].get("username", "UnknownUser")
             printsupport(now(), supporter=user, type=type, amount=amount)
             self.logger.info(f"output tip: {amount} by {user}")
         else:

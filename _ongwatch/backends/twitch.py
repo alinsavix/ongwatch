@@ -1,12 +1,16 @@
 # See https://twitchpy.readthedocs.io/ for docs
 
 import argparse
+import asyncio
 import json
 import logging
 import re
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, cast
 
+import obsws_python as obs
 from tdvutil import ppretty
 from twitch import Client
 from twitch.errors import HTTPException
@@ -29,6 +33,40 @@ SUB_VALUES = {
     2000: 10.00,
     3000: 25.00,
 }
+
+@dataclass
+class Redeem:
+    scene: str
+    source: str
+    length_s: int
+
+REDEEMS: dict[int, Redeem] = {
+    5: Redeem(scene="[*] BPM Matched", source="BPM ongocat", length_s=8),
+    8: Redeem(scene="[*] BPM Matched", source="BPM Squish", length_s=8),
+    24: Redeem(scene="[*] BPM Matched", source="BPM Rudolf Dance", length_s=10),
+    86: Redeem(scene="[*] BPM Matched", source="BPM Pony Stomp", length_s=8),
+    88: Redeem(scene="[*] BPM Matched", source="BPM Headbang", length_s=10),
+    99: Redeem(scene="[*] BPM Matched OJB Headbang", source="BPM OJB COREYT0WNS", length_s=13),
+    101: Redeem(scene="[*] BPM Matched", source="BPM Catbox", length_s=14),
+    104: Redeem(scene="[*] BPM Matched", source="BPM Bajo Back", length_s=16),
+    2490: Redeem(scene="[*] Bot Triggered Alerts", source="PonyMegaStampede", length_s=154),
+    3333: Redeem(scene="[*] Bot Triggered Alerts", source="megairon", length_s=138),
+    4444: Redeem(scene="[*] Bot Triggered Alerts", source="WeightOfTheWorld", length_s=256),
+}
+
+async def play_source(scene: str, source: str, length_s: int) -> None:
+    global obsclient
+    r = obsclient.get_scene_item_id(scene, source)
+    if r is None:
+        print(f"ERROR: Can't play item: {scene},{source}", file=sys.stderr)
+        return
+
+    # else
+    print(f"INFO: Playing item: {scene},{source}", file=sys.stderr)
+    id = r.scene_item_id
+    obsclient.set_scene_item_enabled(scene, id, True)
+    await asyncio.sleep(length_s)
+    obsclient.set_scene_item_enabled(scene, id, False)
 
 def get_token(token_file: Path) -> Dict[str, str]:
     with open(token_file, 'r') as f:
@@ -193,6 +231,11 @@ class OngWatch_Twitch(Client):
         self.logger.info(f"output cheer: {data['bits']} for {data['user_name'] or 'Unknown'}")
         printsupport(ts=now(), supporter=data["user_name"] or "Unknown", type="Bits", amount=data["bits"] / 100.0)
 
+        bits = int(data["bits"])
+        if bits in REDEEMS:
+            await play_source(REDEEMS[bits].scene, REDEEMS[bits].source, REDEEMS[bits].length_s)
+
+
     async def on_points_automatic_reward_redemption_add(self, data: eventsub.interaction.AutomaticRewardRedemptionAddEvent) -> None:
         self.logger.debug(f"Points automatic reward redemption add received: {data}")
 
@@ -242,6 +285,9 @@ class OngWatch_Twitch(Client):
 async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger) -> None:
     if creds is None:
         raise ValueError("No credentials specified")
+
+    global obsclient
+    obsclient = obs.ReqClient(host="localhost", port=4455, timeout=10)
 
     tokens = get_token(args.token_file)
     climode = True if args.environment == 'localdev' else False

@@ -1,0 +1,197 @@
+[build-system]
+requires = [
+    "setuptools>=46.1.0",
+    "setuptools_scm[toml]>=5",
+    "trove-classifiers",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "ongwatch"
+dynamic = [ "version" ]
+description = "Twitch and related services event streaming and automation"
+authors = [ { name = "TDV Alinsa", email = "alinsa-github@lupine.org" } ]
+# maintainers = [ { name = "whoever", email = "whatever" } ]
+license = { file = "LICENSE.txt" }
+readme = { file = "README.md", content-type = "text/markdown" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+]
+
+requires-python = ">=3.12"
+dependencies = [
+    "twitch-py>=3.2.7",
+    "python-socketio[asyncio-client,client]==4.6.1",
+    "tdvutil",
+    "pytz",
+    "toml",
+]
+# dependencies = [ "ppretty>=1.3" ]
+
+# [project.optional-dependencies]
+# tests = [ "pytest>=7.0", "pytest-html", "pytest-cov" ]
+
+[project.urls]
+"Homepage" = "https://github.com/alinsavix/ongwatch"
+"Bug Reports" = "https://github.com/alinsavix/ongwatch/issues"
+"Source" = "https://github.com/alinsavix/ongwatch"
+# "Documentation" = = "https://pkgname.readthedocs.io/en/latest/"
+
+# This would provide a command called `sample` which executes the function
+# `main` from this package when invoked:
+# [project.scripts]
+# sample = "sample:main"
+
+
+[tool.setuptools_scm]
+# For smarter version schemes and other configuration options,
+# check out https://github.com/pypa/setuptools_scm
+version_scheme = "no-guess-dev"
+# write_to = "wowdump/_version.py"
+
+
+# [tool.setuptools]
+# our actual source code
+# package-dir = { "" = "src" }
+# include-package-data = false
+
+# [tool.setuptools.package-data]
+# data files included that need to be installed
+# "pkgname" = [ "py.typed" ]
+
+# [tool.setuptools.packages.find]
+# where = [ "src" ]
+# include = [
+#     "wowdump",
+#     "wowdump.commands",
+#     "wowdump.filetypes",
+#     "wowdump.simplifiers",
+# ]
+# exclude = []
+# namespaces = true
+
+
+[tool.mypy]
+python_version = "3.12"
+
+mypy_path = "typings"
+exclude = "^(tests/|conftest\\.py|outputs/|typings/|out/)"
+
+# follow_imports = "silent"
+# ignore_missing_imports = true
+namespace_packages = true
+warn_unused_configs = true
+
+strict_optional = true
+disallow_subclassing_any = false
+disallow_any_generics = true
+disallow_untyped_defs = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+warn_no_return = true
+
+# [[tool.mypy.overrides]]
+# module = [ "kaitaistruct.*" ]
+# ignore_missing_imports = true
+
+
+[tool.autopep8]
+max_line_length = 96
+
+ignore = [
+    "E302", # not enough blank lines (sometimes useful)
+    "E303", # too many blank lines (sometimes useful!)
+    "E402", # "module level import not at top of file"
+]
+
+
+[tool.isort]
+# Blender primary before stdlib bits because that seems to be the order
+# used in most of the blender built-in addons and such. There's probably
+# no reason things *need* to be that way, but a consistently followed
+# mediocre standard is better than a poorly followed one.
+#
+# We can remove blender-related things from non-blender projects if we
+# really want, but it's harmless to leave them in.
+sections = [
+    "FUTURE",
+    "STDLIB",
+    "FIRSTPARTY",
+    "THIRDPARTY",
+    "LOCALFOLDER",
+]
+
+known_first_party = [  ]
+
+
+[tool.pytest.ini_options]
+required_plugins = [
+    "pytest-html >=3.1",
+    "pytest-cov >=2.12",
+    "pytest-order >=1.0",
+]
+
+log_cli = false
+addopts = [
+    "--tb=short",
+    "--strict-markers",
+    "--html=@rootdir@/tests/report.html",
+    "--css=@rootdir@/tests/report.css",
+    "--self-contained-html",
+    "--cov=pkgname",
+    "--cov-report=html:@rootdir@/tests/htmlcov",
+]
+
+console_output_style = "count"
+log_auto_indent = true
+norecursedirs = [ "*" ]
+python_files = [ "test_*.py", "check_*.py", "example_*.py" ]
+testpaths = [ "tests" ]
+
+filterwarnings = [
+    # hopefully the pytest folks will give us a better way to do this at
+    # some point so we don't have to use `pytest_cmdline_preparse` at all
+    'ignore:The pytest_cmdline_preparse hook is deprecated:DeprecationWarning',
+]
+
+[tool.uv]
+dev-dependencies = [
+    "mypy",
+    "types-toml",
+    "types-pytz",
+    "flake8-async",
+    "flake8-bugbear",
+    "flake8-builtins",
+    "flake8-comprehensions",
+    "flake8-import-conventions",
+    "flake8-pyproject",
+    "flake8-secure-coding-standard",
+    "flake8-simplify",
+    "flake8-use-pathlib",
+]
+
+# markers = [
+#     "something: description of something"
+# ]
+
+
+# We're only going to set a couple of sphinx-pyproject values here -- things
+# not related to the layout, that would benefit from a single source of truth.
+# Most layout-specific things is still in the docs `conf.py` file.
+#
+# For now, though, this stays commented out until the plugin can cope with us
+# using dynamic versions.
+# [tool.sphinx-pyproject]
+# github_username = "alinsavix"
+# github_repository = "python-skeleton"

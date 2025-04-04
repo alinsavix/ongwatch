@@ -109,3 +109,51 @@ This is *definitely* a work in progress, and you shouldn't rely on it to functio
 If you have input into the idea (or actual code), feel free to reach out. Alinsa doesn't bite! Much. Thoughts from outside of her normal circle are eagerly accepted!
 
 And yes, the "ongwatch" name is probably temporary, pending having any kind of good idea what else to call this.
+
+## How to use
+
+Setup is pretty rough right now. The short version
+
+* Set up a python venv, activate it, and `pip install -r requirements.txt`
+* Create a bot for yourself in the Twitch dev interface
+* Create a `credentials.toml` with credentials for Twitch, StreamElements, and Streamlabs (see below)
+* `./ongwatch.py --auth twitch` to get proper Twitch OAuth tokens
+* `./ongwatch.py` to start everything up
+
+
+## Setting up credentials.toml
+
+You can optionally specify an "environment" (dev, prod, etc) for ongwatch to use, with `--environment <whatever>`. The default environment is `test`. Each of the entries in the credentials file is specific to an environment.
+
+Example file, with notes inline:
+
+```toml
+# The OAuth client and secret as provided by twitch. We use the device code
+# flow, so no OAuth callback URL (or local webserver) is needed. You can use
+# the same client id across all your environments, if desired.
+#
+# If you want to use the local twitch mock websocket server (provided by the
+# twitch CLI), use "localdev" as your environment name
+[twitch.test]
+client_id = 'abcdefg[...]xyz'
+client_secret = 'zyxwvut[...]cba'
+
+# For StreamElements, the JWT token you can get via their API expires, so
+# it's not ideal to use for this. Instead, use the api key, which is the last
+# segment of the URL to an overlay associated with the streamer's account.
+# This key doesn't expire (otherwise peoples' overlays would periodically
+# break), so just use that.
+#
+# There might be SOME functionality that is not available using this api key,
+# but most of the critical stuff seems to work fine.
+#
+# Theoretically StreamElements OAuth tokens don't expire, but it seems to
+# be nearly impossible to actually get StreamElements to give out OAuth
+# access.
+[streamelements.test]
+apikey = "querty-tsS20-abcdxyz"
+
+# From settings > API settings > API Tokens > Your Socket API Token
+[streamlabs.test]
+socket_token = "quertyOhMyThisIsAVeryLongTokenOrMaybeJustACryForHelp"
+```

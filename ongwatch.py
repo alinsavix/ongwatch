@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
                     cast)
 
-from tdvutil import ppretty
-from tdvutil.argparse import CheckFile
-
 import _ongwatch.backends as backends
 from _ongwatch.util import get_credentials
+
+from tdvutil import ppretty
+from tdvutil.argparse import CheckFile
 
 # FIXME: generate this dynamically?
 BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
@@ -55,6 +55,11 @@ async def async_main(args: argparse.Namespace) -> int:
 
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
+
+    # Initialize the output manager
+    from _ongwatch.outputs import initialize_outputs
+    output_manager = await initialize_outputs()
+    logging.info("Output manager initialized")
 
     tasks: list[asyncio.Task[None]] = []
 

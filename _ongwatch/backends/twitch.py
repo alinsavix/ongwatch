@@ -1,18 +1,20 @@
 # See https://twitchpy.readthedocs.io/ for docs
 
 import argparse
+import asyncio
 import json
 import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, cast
 
+from _ongwatch.outputs import dispatch_event
+from _ongwatch.util import log, now, out, printextra, printsupport
+
 from tdvutil import ppretty
 from twitch import Client
 from twitch.errors import HTTPException
 from twitch.types import eventsub
-
-from _ongwatch.util import log, now, out, printextra, printsupport
 
 # Best I can tell, this info is simply not available from the API,
 # so we have to hardcode it. Units are in bits.
@@ -88,10 +90,12 @@ class OngWatch_Twitch(Client):
     async def on_stream_online(self, data: eventsub.streams.StreamOnlineEvent) -> None:
         self.logger.info(f"Stream online received: {data}")
         out(f"=== ONLINE (type={data["type"]} @ {data["started_at"]} ===")
+        await dispatch_event("stream.online", dict(data))
 
     async def on_stream_offline(self, data: eventsub.streams.StreamOfflineEvent) -> None:
         self.logger.info(f"Stream offline received: {data}")
         out("=== OFFLINE ===")
+        await dispatch_event("stream.offline", dict(data))
 
     request_re = re.compile(r"""
         ^@
@@ -164,16 +168,19 @@ class OngWatch_Twitch(Client):
             recipient = data["sub_gift"]["recipient_user_name"]
             tier = int(data["sub_gift"]["sub_tier"])
             months = 0
+            event_type = "subscription.gift"
         elif data["sub"] is not None:
             gifter = ""
             recipient = chatter
             tier = int(data["sub"]["sub_tier"])
             months = 1
+            event_type = "subscription.new"
         elif data["resub"] is not None:
             gifter = ""
             recipient = chatter
             tier = int(data["resub"]["sub_tier"])
             months = data["resub"]["cumulative_months"] or 0
+            event_type = "subscription.resub"
         else:
             return
 
@@ -186,6 +193,7 @@ class OngWatch_Twitch(Client):
 
         self.logger.info(f"output sub: {value} for {recipient}")
         printsupport(ts=now(), gifter=gifter, supporter=recipient, type=sub_str, amount=value)
+        await dispatch_event(event_type, dict(data))
 
     # async def on_cheer(self, data: eventsub.bits.CheerEvent) -> None:
     #     # print(type(data))
@@ -217,6 +225,7 @@ class OngWatch_Twitch(Client):
         self.logger.debug(f"Hype train begin received: {data}")
         self.logger.info(f"output hype train begin")
         out("=== HYPE TRAIN BEGIN ===")
+        await dispatch_event("hype_train.begin", dict(data))
 
     # async def on_hype_train_progress(self, data: eventsub.interaction.HypeTrainEvent):
     #     log(f"INFO: Hype train progress received: {data}")
@@ -225,6 +234,7 @@ class OngWatch_Twitch(Client):
         self.logger.debug(f"Hype train end received: {data}")
         self.logger.info(f"output hype train end (level={data['level']}, total={data['total']})")
         out(f"=== HYPE TRAIN END (level={data['level']}, total={data['total']}) ===")
+        await dispatch_event("hype_train.end", dict(data))
 
 
     # async def on_ad_break_begin(self, data: eventsub.streams.AdBreakBeginEvent):
@@ -243,6 +253,7 @@ class OngWatch_Twitch(Client):
 
         self.logger.info(f"output raid: {viewers} from {from_user}")
         printsupport(ts=now(), supporter=from_user, type=f"Raid - {viewers}", amount=0.0)
+        await dispatch_event("raid", dict(data))
 
 
 async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger) -> None:
@@ -264,5 +275,9 @@ async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: lo
     except Exception as e:
         logger.error(f"exception: {e}")
         raise
-    finally:
-        await client.close()
+
+    # Close the client after the try/except block
+    try:
+        await asyncio.wait_for(client.close(), timeout=5.0)
+    except asyncio.TimeoutError:
+        logger.warning("Timeout while closing Twitch client")

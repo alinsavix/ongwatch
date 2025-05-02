@@ -157,3 +157,11 @@ apikey = "querty-tsS20-abcdxyz"
 [streamlabs.test]
 socket_token = "quertyOhMyThisIsAVeryLongTokenOrMaybeJustACryForHelp"
 ```
+
+
+## twitch localdev
+
+1. run the twitch cli in mock mode at `twitch event websocket start-server`
+2. set up a "localdev" environment for twitch in `credentials.toml`
+3. run ongwatch with `--env localdev`
+4. publish test events with e.g. `twitch event trigger channel.cheer --transport=websocket`

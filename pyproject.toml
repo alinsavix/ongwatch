@@ -29,6 +29,7 @@ dependencies = [
     "tdvutil",
     "pytz",
     "toml",
+    "aiofiles",
 ]
 # dependencies = [ "ppretty>=1.3" ]
 

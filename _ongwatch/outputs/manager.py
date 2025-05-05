@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import inspect
+import logging
 import os
 import pkgutil
 from typing import Any, Dict, List, Optional, Type
@@ -65,13 +66,14 @@ class OutputManager:
             await self.initialize()
 
         # Create tasks for each handler
-        tasks = [
-            asyncio.create_task(
+        tasks = []
+        for handler in self.handlers:
+            logging.getLogger("DISPATCH").info(f"Dispatching event: {event_type} to {handler.name}")
+            task = asyncio.create_task(
                 handler.handle_event(event_type, data),
                 name=f"{handler.name}_{event_type}"
             )
-            for handler in self.handlers
-        ]
+            tasks.append(task)
 
         # Wait for all handlers to process the event
         await asyncio.gather(*tasks, return_exceptions=True)

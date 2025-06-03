@@ -47,3 +47,10 @@ class BumpLogHandler(OutputHandler):
         async with self.lock:
             async with aiofiles.open(self.log_path, mode='a') as f:
                 await f.write(log_line)
+
+    async def shutdown(self) -> None:
+        """Close the log file."""
+        if self.log_path.exists():
+            async with self.lock:
+                async with aiofiles.open(self.log_path, mode='a') as f:
+                    await f.write(f"# BumpLog ended at {datetime.now().isoformat()}\n")

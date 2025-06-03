@@ -3,6 +3,10 @@ python-socketio[client,asyncio_client] == 4.6.1
 tdvutil
 pytz
 toml
+aiofiles
+
+# maybe use asyncio-mqtt instead
+paho-mqtt
 
 
 

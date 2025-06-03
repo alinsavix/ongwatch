@@ -74,9 +74,10 @@ class TwitchMQTTTopics:
     USER_UPDATE = f"{BASE_TOPIC}/user/update"
 
     @classmethod
-    def get_topic_for_event(cls, event: 'TwitchEvent') -> str:
+    # def get_topic_for_event(cls, event: TwitchEvent) -> str:
+    def get_topic_for_event(cls, event_type: str) -> str:
         """Get the appropriate MQTT topic for a given event."""
-        event_class_name = event.__class__.__name__
+        event_class_name = event_type.__class__.__name__
 
         # Map event class names to topic attributes
         mapping = {

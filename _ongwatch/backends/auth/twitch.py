@@ -79,7 +79,7 @@ class TwitchAuth(Client):
             # Retrieve device code and display the verification URL
             user_code, device_code, expires_in, interval = await self.auth_flow.get_device_code()
             print(f'Verification URL: https://www.twitch.tv/activate?device-code={user_code}')
-            expires_in = 30
+            expires_in = 300
 
             # Poll for the authorization and handle token retrieval
             try:

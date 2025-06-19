@@ -1,4 +1,4 @@
-twitch.py >= 3.2.7
+twitch.py >= 3.2.10
 python-socketio[client,asyncio_client] == 4.6.1
 tdvutil
 pytz

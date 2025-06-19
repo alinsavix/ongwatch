@@ -187,25 +187,31 @@ class OngWatch_Twitch(Client):
         self.logger.info(f"output sub: {value} for {recipient}")
         printsupport(ts=now(), gifter=gifter, supporter=recipient, type=sub_str, amount=value)
 
-    async def on_cheer(self, data: eventsub.bits.CheerEvent) -> None:
-        # print(type(data))
-        self.logger.debug(f"Cheer received: {data}")
-        self.logger.info(f"output cheer: {data['bits']} for {data['user_name'] or 'Unknown'}")
-        printsupport(ts=now(), supporter=data["user_name"] or "Unknown", type="Bits", amount=data["bits"] / 100.0)
+    # async def on_cheer(self, data: eventsub.bits.CheerEvent) -> None:
+    #     # print(type(data))
+    #     self.logger.debug(f"Cheer received: {data}")
+    #     self.logger.info(f"output cheer: {data['bits']} for {data['user_name'] or 'Unknown'}")
+    #     printsupport(ts=now(), supporter=data["user_name"] or "Unknown", type="Bits", amount=data["bits"] / 100.0)
 
-    async def on_points_automatic_reward_redemption_add(self, data: eventsub.interaction.AutomaticRewardRedemptionAddEvent) -> None:
-        self.logger.debug(f"Points automatic reward redemption add received: {data}")
+    async def on_bits_use(self, data: eventsub.bits.BitsEvent) -> None:
+        self.logger.debug(f"Bits use received: {data}")
+        self.logger.info(f"output bit use: {data['bits']} for {data['user_name'] or 'Unknown'}")
+        printsupport(ts=now(), supporter=data["user_name"]
+                     or "Unknown", type="Bits", amount=data["bits"] / 100.0)
 
-        user = data["user_name"] or "Unknown"
-        reward = data["reward"]
+    # async def on_points_automatic_reward_redemption_add_v2(self, data: eventsub.interaction.AutomaticRewardRedemptionAddEventV2) -> None:
+    #     self.logger.debug(f"Points automatic reward redemption add received: {data}")
 
-        if reward["type"] not in AUTOMATIC_REWARD_COSTS:
-            return
+    #     user = data["user_name"] or "Unknown"
+    #     reward = data["reward"]
 
-        cost = AUTOMATIC_REWARD_COSTS[reward["type"]] / 100.0
+    #     if reward["type"] not in AUTOMATIC_REWARD_COSTS:
+    #         return
 
-        self.logger.info(f"output redemption: {cost} for {user}")
-        printsupport(ts=now(), supporter=user, type="Bits", amount=cost)
+    #     cost = AUTOMATIC_REWARD_COSTS[reward["type"]] / 100.0
+
+    #     self.logger.info(f"output redemption: {cost} for {user}")
+    #     printsupport(ts=now(), supporter=user, type="Bits", amount=cost)
 
     async def on_hype_train_begin(self, data: eventsub.interaction.HypeTrainEvent) -> None:
         self.logger.debug(f"Hype train begin received: {data}")
@@ -248,7 +254,7 @@ async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: lo
 
     logger.info(f"Starting Twitch backend")
     client = OngWatch_Twitch(client_id=creds['client_id'], client_secret=creds['client_secret'],
-                      botargs=args, logger=logger, socket_debug=False, reconnect=True, cli=climode)
+                      botargs=args, logger=logger, socket_debug=True, reconnect=True, cli=climode)
 
     try:
         await client.start(access_token=tokens['token'], refresh_token=tokens["refresh"], reconnect=True)

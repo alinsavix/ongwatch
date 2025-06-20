@@ -105,22 +105,41 @@ class OngWatch_Twitch(Client):
         has.been.added.to.the.queue
     """, re.VERBOSE)
 
+    rafflewin_re = re.compile(r"""
+        ^
+        Congratulations,
+        \s+
+        (?P<user>\S+)!
+        \s+
+        You.won.the.giveaway
+    """, re.VERBOSE)
+
     # FIXME: should we pass this already extracted fields?
     async def handle_nightbot(self, data: eventsub.chat.MessageEvent) -> None:
+        self.logger.debug(f"Handling message as nightbot message")
         chatmsg = data.get("message", {}).get("text", "")
-        m = self.request_re.match(chatmsg)
-        if not m:
-            self.logger.debug(f"Got a message from nightbot, but not one we care about: {chatmsg}")
+
+        if (m := self.rafflewin_re.match(chatmsg)):
+            user = m.group("user")
+            self.logger.info(f"Nightbot announces raffle winner: {user}")
+            printsupport(ts=now(), supporter=user, type="Raffle", amount=0.0)
             return
 
-        user = m.group("user")
-        # ytname = m.group("ytname")
-        title = m.group("title")
-        req_url = self.request_urls.get(user, "")
+        if (m := self.request_re.match(chatmsg)):
+            user = m.group("user")
+            # ytname = m.group("ytname")
+            title = m.group("title")
+            req_url = self.request_urls.get(user, "")
 
-        linkstr = f'=HYPERLINK("{req_url}", "{title}")'
-        printextra(ts=now(), message=f"SONG REQUEST FROM {user}: {linkstr}")
-        del self.request_urls[user]
+            linkstr = f'=HYPERLINK("{req_url}", "{title}")'
+            printextra(ts=now(), message=f"SONG REQUEST FROM {user}: {linkstr}")
+            del self.request_urls[user]
+            return
+
+        # else, wasn't interesting
+        self.logger.debug(f"Got a message from nightbot, but not one we care about: {chatmsg}")
+        return
+
 
 
     # FIXME: split chat message handling somehow, not sure what makes sense

@@ -119,7 +119,7 @@ class OngWatch_Twitch(Client):
     """, re.VERBOSE)
 
     # FIXME: should we pass this already extracted fields?
-    async def handle_nightbot(self, data: eventsub.chat.MessageEvent) -> None:
+    async def handle_nightbot(self, data: eventsub.chat.MessageEvent | eventsub.chat.NotificationEvent) -> None:
         self.logger.debug(f"Handling message as nightbot message")
         chatmsg = data.get("message", {}).get("text", "")
 
@@ -145,10 +145,13 @@ class OngWatch_Twitch(Client):
         return
 
 
-
     # FIXME: split chat message handling somehow, not sure what makes sense
     async def on_chat_message(self, data: eventsub.chat.MessageEvent) -> None:
-        self.logger.debug(f"Chat notification received: {data}")
+        self.logger.debug(f"Chat message received: {data}")
+
+        if data.get("chatter_user_name") == "Nightbot":
+            await self.handle_nightbot(data)
+            return
 
         chatmsg = data.get("message", {}).get("text", "")
 
@@ -162,9 +165,6 @@ class OngWatch_Twitch(Client):
             self.logger.debug(f"Saved song request from {user}: {req_url}")
             return
 
-        if data.get("chatter_user_name") == "Nightbot":
-            await self.handle_nightbot(data)
-
 
     # This is kinda a train wreck -- the only way to get all the
     # info we need for logging subs/gift subs/resubs/etc, is to
@@ -176,6 +176,10 @@ class OngWatch_Twitch(Client):
     # Sigh.
     async def on_chat_notification(self, data: eventsub.chat.NotificationEvent) -> None:
         self.logger.debug(f"Chat notification received: {data}")
+
+        if data.get("chatter_user_name") == "Nightbot":
+            await self.handle_nightbot(data)
+            return
 
         if data["chatter_is_anonymous"]:
             chatter = "AnAnonymousGifter"

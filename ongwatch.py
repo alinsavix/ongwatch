@@ -12,6 +12,7 @@ from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
                     cast)
 
 import _ongwatch.backends as backends
+import _ongwatch.outputs as outputs
 from _ongwatch.util import get_credentials
 
 from tdvutil import ppretty
@@ -44,21 +45,34 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     authfunc: BackendAuthHandler = module.auth
     return await authfunc(args, creds, logging.getLogger(args.auth))
 
-
-async def async_main(args: argparse.Namespace) -> int:
+def get_enabled_backends(args: argparse.Namespace) -> list[str]:
     if not args.enable_backend or args.enable_backend == ["all"]:
         enabled_backends = backends.backend_list()
     else:
         enabled_backends = args.enable_backend
 
-    enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
+    return [b for b in enabled_backends if b not in args.disable_backend]
 
+def get_enabled_outputs(args: argparse.Namespace) -> list[str]:
+    if not args.enable_output or args.enable_output == ["all"]:
+        enabled_outputs = outputs.output_list()
+    else:
+        enabled_outputs = args.enable_output
+
+    return [o for o in enabled_outputs if o not in args.disable_output]
+
+async def async_main(args: argparse.Namespace) -> int:
+    enabled_backends = get_enabled_backends(args)
+    enabled_outputs = get_enabled_outputs(args)
+
+    logging.getLogger().setLevel(logging.DEBUG)  # FIXME: temp
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
+    logging.info(f"Enabled outputs: {" ".join(enabled_outputs)}")
 
     # Initialize the output manager
     from _ongwatch.outputs import initialize_outputs
-    output_manager = await initialize_outputs()
+    output_manager = await initialize_outputs(args, enabled_outputs)
     logging.info("Output manager initialized")
 
     tasks: list[asyncio.Task[None]] = []
@@ -157,7 +171,6 @@ def parse_args() -> argparse.Namespace:
         help="enable debugging of asyncio"
     )
 
-    # FIXME: the following should probably be per-backend
     parser.add_argument(
         "--debug-backend",
         type=str,
@@ -180,6 +193,30 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="disable named backend"
+    )
+
+    parser.add_argument(
+        "--debug-output",
+        type=str,
+        action="append",
+        default=[],
+        help="enable debug logging for named output"
+    )
+
+    parser.add_argument(
+        "--enable-output",
+        type=str,
+        action="append",
+        default=[],
+        help="enable named output"
+    )
+
+    parser.add_argument(
+        "--disable-output",
+        type=str,
+        action="append",
+        default=[],
+        help="disable named output"
     )
 
     parsed_args = parser.parse_args()

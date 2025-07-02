@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import importlib
 import inspect
@@ -7,10 +8,10 @@ import pkgutil
 from typing import Any, Dict, List, Optional, Type
 
 from _ongwatch.outputs.base import OutputHandler
+from _ongwatch.util import get_credentials
 
 
 class OutputManager:
-    """Manages all output handlers and dispatches events to them."""
     handlers: List[OutputHandler]
     initialized: bool = False
 
@@ -19,29 +20,29 @@ class OutputManager:
         self.initialized = False
         self.logger = logging.getLogger("output.manager")
 
-    async def initialize(self, config: Optional[Dict[str, Any]] = None) -> None:
-        """Initialize all output handlers."""
+    async def initialize(self, args: argparse.Namespace, enabled_outputs: list[str]) -> None:
         if self.initialized:
             return
 
-        config = config or {}
-
         # Discover and load all output handlers
-        await self._load_handlers(config)
+        # FIXME: Can we pass them just their own config? Do we want to?
+        # FIXME: We're passing the same arguments like 4 layers deep, this
+        # probably means we have an abstraction failure.
+        await self._load_handlers(args, enabled_outputs)
 
-        # Initialize all handlers
+        # Initialize all handlers, wait for all of the inits to complete
         init_tasks = [handler.initialize() for handler in self.handlers]
         await asyncio.gather(*init_tasks)
 
         self.initialized = True
 
-    async def _load_handlers(self, config: Dict[str, Any]) -> None:
-        """Discover and load all output handlers from the outputs package."""
+    async def _load_handlers(self, args: argparse.Namespace, enabled_outputs: list[str]) -> None:
         import _ongwatch.outputs as outputs
 
         # Find all packages in the outputs package
         for _, name, is_pkg in pkgutil.iter_modules(outputs.__path__, outputs.__name__ + '.'):
             if not is_pkg or name == '_ongwatch.outputs.base' or name == '_ongwatch.outputs.manager':
+                self.logger.debug(f"Skipping non-output-handler package: {name}")
                 continue
 
             self.logger.debug(f"Initializing output handler package: {name}")
@@ -56,7 +57,7 @@ class OutputManager:
                         and item.__module__ == name):
                     # Get handler-specific config
                     handler_name = item.__name__
-                    handler_config = config.get(handler_name, {})
+                    handler_config = get_credentials(args.credentials_file, handler_name, args.environment)
 
                     self.logger.info(f"Initializing output handler: {handler_name}")
 
@@ -70,7 +71,7 @@ class OutputManager:
     async def dispatch(self, event_type: str, data: Dict[str, Any]) -> None:
         # FIXME: should we just raise an exception rather than initializing?
         if not self.initialized:
-            await self.initialize()
+            raise RuntimeError("OutputManager not initialized")
 
         # Create tasks for each handler
         tasks = []

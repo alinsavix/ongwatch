@@ -1,7 +1,19 @@
+import argparse
+import importlib
+from types import ModuleType
 from typing import Any, Dict, Optional
 
 from _ongwatch.outputs.base import OutputHandler
 from _ongwatch.outputs.manager import OutputManager
+
+OUTPUT_LIST = ["bumplog", "mqtt"]
+
+def output_list() -> list[str]:
+    return OUTPUT_LIST
+
+# FIXME: Should we return the import, or should we return specific functions?
+def get_output(name: str) -> ModuleType:
+    return importlib.import_module(f"_ongwatch.outputs.{name}")
 
 # Singleton instance of the output manager
 _output_manager = None
@@ -13,10 +25,9 @@ def get_output_manager() -> OutputManager:
         _output_manager = OutputManager()
     return _output_manager
 
-async def initialize_outputs(config: Optional[Dict[str, Any]] = None) -> OutputManager:
-    """Initialize the output system with the given configuration."""
+async def initialize_outputs(args: argparse.Namespace, enabled_outputs: list[str]) -> OutputManager:
     manager = get_output_manager()
-    await manager.initialize(config)
+    await manager.initialize(args, enabled_outputs)
     return manager
 
 async def dispatch_event(event_type: str, data: Dict[str, Any]) -> None:

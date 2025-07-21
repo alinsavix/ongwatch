@@ -7,12 +7,12 @@ import re
 from pathlib import Path
 from typing import Any, Dict, cast
 
+from _ongwatch.util import log, now, out, printextra, printsupport
+
 from tdvutil import ppretty
 from twitch import Client
 from twitch.errors import HTTPException
 from twitch.types import eventsub
-
-from _ongwatch.util import log, now, out, printextra, printsupport
 
 # Best I can tell, this info is simply not available from the API,
 # so we have to hardcode it. Units are in bits.
@@ -153,7 +153,7 @@ class OngWatch_Twitch(Client):
 
         # For !sr handling, we need to track the requester when they make the
         # request, since the nightbot response doesn't actually include the URL.
-        if chatmsg.startswith("!sr "):
+        if chatmsg.lower().startswith("!sr "):
             user = data.get("chatter_user_name", "UnknownUser")
             req_url = chatmsg.split(" ")[1]
 

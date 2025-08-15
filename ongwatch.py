@@ -46,6 +46,9 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     return await authfunc(args, creds, logging.getLogger(args.auth))
 
 def get_enabled_backends(args: argparse.Namespace) -> list[str]:
+    # FIXME NOW: temporary for testing
+    return ["dummy"]
+
     if not args.enable_backend or args.enable_backend == ["all"]:
         enabled_backends = backends.backend_list()
     else:

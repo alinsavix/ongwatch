@@ -7,12 +7,14 @@ import re
 from pathlib import Path
 from typing import Any, Dict, cast
 
-from _ongwatch.util import log, now, out, printextra, printsupport
-
 from tdvutil import ppretty
 from twitch import Client
 from twitch.errors import HTTPException
 from twitch.types import eventsub
+
+from _ongwatch.dispatcher import get_dispatcher
+from _ongwatch.event import Event, EventType
+from _ongwatch.util import now
 
 # Best I can tell, this info is simply not available from the API,
 # so we have to hardcode it. Units are in bits.
@@ -87,11 +89,27 @@ class OngWatch_Twitch(Client):
 
     async def on_stream_online(self, data: eventsub.streams.StreamOnlineEvent) -> None:
         self.logger.info(f"Stream online received: {data}")
-        out(f"=== ONLINE (type={data["type"]} @ {data["started_at"]} ===")
+
+        event = Event(
+            event_type=EventType.STREAM_ONLINE,
+            timestamp=now(),
+            backend="twitch",
+            metadata={"type": data["type"], "started_at": data["started_at"]},
+            raw_data=dict(data)
+        )
+        await get_dispatcher().dispatch_event(event)
 
     async def on_stream_offline(self, data: eventsub.streams.StreamOfflineEvent) -> None:
         self.logger.info(f"Stream offline received: {data}")
-        out("=== OFFLINE ===")
+
+        event = Event(
+            event_type=EventType.STREAM_OFFLINE,
+            timestamp=now(),
+            backend="twitch",
+            metadata={},
+            raw_data=dict(data)
+        )
+        await get_dispatcher().dispatch_event(event)
 
     request_re = re.compile(r"""
         ^@
@@ -122,7 +140,17 @@ class OngWatch_Twitch(Client):
         if (m := self.rafflewin_re.match(chatmsg)):
             user = m.group("user")
             self.logger.info(f"Nightbot announces raffle winner: {user}")
-            printsupport(ts=now(), supporter=user, type="Raffle", amount=0.0)
+
+            event = Event(
+                event_type=EventType.RAFFLE,
+                timestamp=now(),
+                backend="twitch",
+                user=user,
+                amount=0.0,
+                metadata={},
+                raw_data=dict(data)
+            )
+            await get_dispatcher().dispatch_event(event)
             return
 
         if (m := self.request_re.match(chatmsg)):
@@ -132,7 +160,18 @@ class OngWatch_Twitch(Client):
             req_url = self.request_urls.get(user, "")
 
             linkstr = f'=HYPERLINK("{req_url}", "{title}")'
-            printextra(ts=now(), message=f"SONG REQUEST FROM {user}: {linkstr}")
+            message_str = f"SONG REQUEST FROM {user}: {linkstr}"
+
+            event = Event(
+                event_type=EventType.SONG_REQUEST,
+                timestamp=now(),
+                backend="twitch",
+                user=user,
+                message=message_str,
+                metadata={"title": title, "url": req_url},
+                raw_data=dict(data)
+            )
+            await get_dispatcher().dispatch_event(event)
             del self.request_urls[user]
             return
 
@@ -208,7 +247,21 @@ class OngWatch_Twitch(Client):
         value = SUB_VALUES[tier]
 
         self.logger.info(f"output sub: {value} for {recipient}")
-        printsupport(ts=now(), gifter=gifter, supporter=recipient, type=sub_str, amount=value)
+
+        # Determine if this is a gift or regular sub
+        event_type = EventType.SUBSCRIPTION_GIFT if gifter else EventType.SUBSCRIPTION
+
+        event = Event(
+            event_type=event_type,
+            timestamp=now(),
+            backend="twitch",
+            user=recipient,
+            gifter=gifter if gifter else None,
+            amount=value,
+            metadata={"tier": tier, "months": months, "sub_str": sub_str},
+            raw_data=dict(data)
+        )
+        await get_dispatcher().dispatch_event(event)
 
     # async def on_cheer(self, data: eventsub.bits.CheerEvent) -> None:
     #     # print(type(data))
@@ -219,8 +272,17 @@ class OngWatch_Twitch(Client):
     async def on_bits_use(self, data: eventsub.bits.BitsEvent) -> None:
         self.logger.debug(f"Bits use received: {data}")
         self.logger.info(f"output bit use: {data['bits']} for {data['user_name'] or 'Unknown'}")
-        printsupport(ts=now(), supporter=data["user_name"]
-                     or "Unknown", type="Bits", amount=data["bits"] / 100.0)
+
+        event = Event(
+            event_type=EventType.BITS,
+            timestamp=now(),
+            backend="twitch",
+            user=data["user_name"] or "Unknown",
+            amount=data["bits"] / 100.0,
+            metadata={"bits": data["bits"]},
+            raw_data=dict(data)
+        )
+        await get_dispatcher().dispatch_event(event)
 
     # async def on_points_automatic_reward_redemption_add_v2(self, data: eventsub.interaction.AutomaticRewardRedemptionAddEventV2) -> None:
     #     self.logger.debug(f"Points automatic reward redemption add received: {data}")
@@ -239,7 +301,15 @@ class OngWatch_Twitch(Client):
     async def on_hype_train_begin(self, data: eventsub.interaction.HypeTrainEvent) -> None:
         self.logger.debug(f"Hype train begin received: {data}")
         self.logger.info(f"output hype train begin")
-        out("=== HYPE TRAIN BEGIN ===")
+
+        event = Event(
+            event_type=EventType.HYPE_TRAIN_BEGIN,
+            timestamp=now(),
+            backend="twitch",
+            metadata={},
+            raw_data=dict(data)
+        )
+        await get_dispatcher().dispatch_event(event)
 
     # async def on_hype_train_progress(self, data: eventsub.interaction.HypeTrainEvent):
     #     log(f"INFO: Hype train progress received: {data}")
@@ -247,7 +317,15 @@ class OngWatch_Twitch(Client):
     async def on_hype_train_end(self, data: eventsub.interaction.HypeTrainEndEvent) -> None:
         self.logger.debug(f"Hype train end received: {data}")
         self.logger.info(f"output hype train end (level={data['level']}, total={data['total']})")
-        out(f"=== HYPE TRAIN END (level={data['level']}, total={data['total']}) ===")
+
+        event = Event(
+            event_type=EventType.HYPE_TRAIN_END,
+            timestamp=now(),
+            backend="twitch",
+            metadata={"level": data["level"], "total": data["total"]},
+            raw_data=dict(data)
+        )
+        await get_dispatcher().dispatch_event(event)
 
 
     # async def on_ad_break_begin(self, data: eventsub.streams.AdBreakBeginEvent):
@@ -265,7 +343,17 @@ class OngWatch_Twitch(Client):
         viewers = data["viewers"]
 
         self.logger.info(f"output raid: {viewers} from {from_user}")
-        printsupport(ts=now(), supporter=from_user, type=f"Raid - {viewers}", amount=0.0)
+
+        event = Event(
+            event_type=EventType.RAID,
+            timestamp=now(),
+            backend="twitch",
+            user=from_user,
+            amount=0.0,
+            metadata={"viewers": viewers, "to_user": to_user},
+            raw_data=dict(data)
+        )
+        await get_dispatcher().dispatch_event(event)
 
 
 async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger) -> None:

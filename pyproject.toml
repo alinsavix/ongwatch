@@ -118,8 +118,8 @@ ignore = [
 sections = [
     "FUTURE",
     "STDLIB",
-    "FIRSTPARTY",
     "THIRDPARTY",
+    "FIRSTPARTY",
     "LOCALFOLDER",
 ]
 

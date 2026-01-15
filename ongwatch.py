@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run --script --quiet
 import argparse
 import asyncio
 import importlib
@@ -15,6 +15,8 @@ from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
 import _ongwatch.backends as backends
+import _ongwatch.outputs as outputs
+from _ongwatch.dispatcher import get_dispatcher
 from _ongwatch.util import get_credentials
 
 # FIXME: generate this dynamically?
@@ -34,7 +36,7 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     try:
         module = backends.get_backend(f"auth.{backend}")
     except ModuleNotFoundError as e:
-        logger.error(f"No such backend '{backend}': {e}")
+        logger.error(f"No such backend '{backend}'")
         return False
 
     if "auth" not in dir(module):
@@ -54,9 +56,9 @@ async def async_main(args: argparse.Namespace) -> int:
     enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
 
     logging.info("Ongwatch is in startup")
-    logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
+    logging.info(f"Enabled backends: {' '.join(enabled_backends)}")
 
-    tasks: list[asyncio.Task[None]] = []
+    backend_tasks: list[asyncio.Task[None]] = []
 
     for backend in enabled_backends:
         logging.info(
@@ -71,13 +73,52 @@ async def async_main(args: argparse.Namespace) -> int:
             logger.setLevel(logging.INFO)
 
         startfunc: BackendStartHandler = module.start
-        tasks.append(asyncio.create_task(startfunc(args, creds, logger)))
+        backend_tasks.append(asyncio.create_task(startfunc(args, creds, logger)))
+
+    # Initialize output handlers
+    if not args.enable_output or args.enable_output == ["all"]:
+        enabled_outputs = outputs.output_list()
+    else:
+        enabled_outputs = args.enable_output
+
+    enabled_outputs = [o for o in enabled_outputs if o not in args.disable_output]
+
+    logging.info(f"Enabled output handlers: {' '.join(enabled_outputs)}")
+
+    dispatcher = get_dispatcher()
+    output_tasks: list[asyncio.Task[None]] = []
+
+    for output_name in enabled_outputs:
+        logging.info(
+            f"loading config for 'outputs.{output_name}.{args.environment}' from {args.credentials_file}")
+
+        # Get credentials for this output (may be None)
+        output_creds = get_credentials(args.credentials_file, f"outputs.{output_name}", args.environment)
+
+        # Get output module
+        module = outputs.get_output(output_name)
+
+        # Create logger
+        logger = logging.getLogger(f"output.{output_name}")
+        if output_name in args.debug_output or "all" in args.debug_output:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
+
+        # Register with dispatcher and get queue
+        event_queue = dispatcher.register_output(output_name)
+
+        # Start output handler
+        output_startfunc: outputs.OutputStartHandler = module.start
+        output_tasks.append(
+            asyncio.create_task(output_startfunc(args, output_creds, logger, event_queue))
+        )
 
     shutdown_event = asyncio.Event()
     shutdown_task = asyncio.create_task(shutdown_event.wait())
 
     # Setup Windows-compatible keyboard interrupt handler
-    def handle_interrupt():
+    def handle_interrupt() -> None:
         asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
 
     loop = asyncio.get_event_loop()
@@ -96,17 +137,17 @@ async def async_main(args: argparse.Namespace) -> int:
     try:
         # await asyncio.wait()
         done, pending = await asyncio.wait(
-            [shutdown_task, *tasks],
+            [shutdown_task, *backend_tasks, *output_tasks],
             return_when=asyncio.FIRST_COMPLETED
         )
     finally:
         logging.info("Shutting down...")
-        # Cancel all running tasks
-        for task in tasks:
+        # Cancel all running tasks (backends and outputs)
+        for task in backend_tasks + output_tasks:
             if not task.done():
                 task.cancel()
         # Wait for all tasks to be cancelled
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*backend_tasks, *output_tasks, return_exceptions=True)
 
     return 0
 
@@ -175,6 +216,30 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="disable named backend"
+    )
+
+    parser.add_argument(
+        "--enable-output",
+        type=str,
+        action="append",
+        default=[],
+        help="enable named output handler"
+    )
+
+    parser.add_argument(
+        "--disable-output",
+        type=str,
+        action="append",
+        default=[],
+        help="disable named output handler"
+    )
+
+    parser.add_argument(
+        "--debug-output",
+        type=str,
+        action="append",
+        default=[],
+        help="enable debug logging for named output handler"
     )
 
     parsed_args = parser.parse_args()

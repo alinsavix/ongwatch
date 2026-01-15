@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run mypy:*)",
+      "Bash(timeout 5 ./ongwatch.py:*)",
+      "Bash(python ./ongwatch.py:*)",
+      "Bash(./ongwatch.py:*)"
+    ]
+  }
+}

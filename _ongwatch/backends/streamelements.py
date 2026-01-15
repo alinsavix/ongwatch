@@ -7,7 +7,9 @@ from typing import Any, Dict
 import socketio
 from tdvutil import ppretty
 
-from _ongwatch.util import log, now, out, printsupport
+from _ongwatch.dispatcher import get_dispatcher
+from _ongwatch.event import Event, EventType
+from _ongwatch.util import now
 
 
 # FIXME: many of the handlers need their arguments to be properly typed
@@ -45,13 +47,20 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
     async def on_event(self, event: Any, extra: Any) -> None:
         t = event['type']
         if t == "tip":
-            if event.get("isMock", False):
-                type = "Tip_TEST"
-            else:
-                type = "Tip"
+            is_test = event.get("isMock", False)
             amount = float(event['data'].get("amount", 0.0))
             user = event['data'].get("username", "UnknownUser")
-            printsupport(now(), supporter=user, type=type, amount=amount)
+
+            event_obj = Event(
+                event_type=EventType.TIP,
+                timestamp=now(),
+                backend="streamelements",
+                user=user,
+                amount=amount,
+                metadata={"is_test": is_test},
+                raw_data=event
+            )
+            await get_dispatcher().dispatch_event(event_obj)
             self.logger.info(f"output tip: {amount} by {user}")
         else:
             self.logger.debug(f"Ignoring event of type {t}: {event}")

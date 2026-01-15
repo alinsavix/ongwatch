@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run --script --quiet
 import argparse
 import asyncio
 import importlib
@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
                     cast)
 
-from tdvutil import ppretty
-from tdvutil.argparse import CheckFile
-
 import _ongwatch.backends as backends
 from _ongwatch.util import get_credentials
+
+from tdvutil import ppretty
+from tdvutil.argparse import CheckFile
 
 # FIXME: generate this dynamically?
 BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]

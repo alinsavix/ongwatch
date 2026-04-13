@@ -10,7 +10,6 @@ import aiohttp
 import pytz
 import toml
 from tdvutil import ppretty
-from tdvutil.argparse import CheckFile
 
 
 # FIXME: use real logging ffs

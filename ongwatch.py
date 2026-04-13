@@ -1,7 +1,6 @@
 #!/usr/bin/env -S uv run --script --quiet
 import argparse
 import asyncio
-import importlib
 import io
 import logging
 import platform
@@ -72,7 +71,7 @@ async def async_main(args: argparse.Namespace) -> int:
 
     # Setup Windows-compatible keyboard interrupt handler
     def handle_interrupt():
-        asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
+        loop.call_soon_threadsafe(shutdown_event.set)
 
     loop = asyncio.get_running_loop()
     if platform.system() != "Windows":
@@ -93,6 +92,10 @@ async def async_main(args: argparse.Namespace) -> int:
             [shutdown_task, *tasks],
             return_when=asyncio.FIRST_COMPLETED
         )
+        for task in done:
+            if task is not shutdown_task and not task.cancelled():
+                if exc := task.exception():
+                    logging.error("Backend task failed", exc_info=exc)
     finally:
         logging.info("Shutting down...")
         shutdown_task.cancel()

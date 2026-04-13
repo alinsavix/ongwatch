@@ -8,21 +8,15 @@ import platform
 import signal
 import sys
 from pathlib import Path
-from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
-                    cast)
+from typing import cast
 
 import _ongwatch.backends as backends
+from _ongwatch.backends import BackendAuthHandler, BackendStartHandler
 from _ongwatch.util import get_credentials
 
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
-# FIXME: generate this dynamically?
-BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
-
-# FIXME: define these in a backend module or similar
-BackendAuthHandler = Callable[[argparse.Namespace, Dict[str, str] | None, logging.Logger], Coroutine[None, None, bool]]
-BackendStartHandler = Callable[[argparse.Namespace, Dict[str, str] | None, logging.Logger], Coroutine[None, None, None]]
 
 async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.Logger) -> int:
     logger.setLevel(logging.WARNING)  # quiet things down
@@ -80,7 +74,7 @@ async def async_main(args: argparse.Namespace) -> int:
     def handle_interrupt():
         asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     if platform.system() != "Windows":
         loop.add_signal_handler(signal.SIGINT, handle_interrupt)
         loop.add_signal_handler(signal.SIGTERM, handle_interrupt)
@@ -101,12 +95,11 @@ async def async_main(args: argparse.Namespace) -> int:
         )
     finally:
         logging.info("Shutting down...")
-        # Cancel all running tasks
+        shutdown_task.cancel()
         for task in tasks:
             if not task.done():
                 task.cancel()
-        # Wait for all tasks to be cancelled
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(shutdown_task, *tasks, return_exceptions=True)
 
     return 0
 
@@ -204,6 +197,13 @@ def main() -> int:
     # FIXME: is this the same as calling asyncio.run() with debug=True?
     # logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
+    # FIXME: This got flagged with the following, verify and fix if needed:
+    # auth() returns True on success and False on failure. main() does
+    # sys.exit(main()), so True → sys.exit(1) (shell failure) and False →
+    # sys.exit(0) (shell success). Every successful auth run exits with
+    # code 1. The three return False error cases in do_auth_flow should
+    # return 1, and the final line should be return 0
+    # if (await authfunc(...)) else 1.
     if args.auth is not None:
         return asyncio.run(do_auth_flow(args, args.auth, logging.getLogger(f"auth.{args.auth}")), debug=args.debug_asyncio)
 

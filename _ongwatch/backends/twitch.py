@@ -1,11 +1,9 @@
 import argparse
-import json
 import logging
 import re
-from pathlib import Path
-from typing import Dict, cast
+from typing import Dict
 
-from _ongwatch.util import now, out, printextra, printsupport
+from _ongwatch.util import get_token, now, out, printextra, printsupport
 
 from twitchio import Client, eventsub
 from twitchio.models.eventsub_ import (ChannelBitsUse, ChannelRaid,
@@ -14,7 +12,8 @@ from twitchio.models.eventsub_ import (ChannelBitsUse, ChannelRaid,
                                        StreamOffline, StreamOnline)
 
 # Best I can tell, this info is simply not available from the API,
-# so we have to hardcode it. Units are in bits.
+# so we have to hardcode it. Units are in bits. Not currently used,
+# but keeping around in case it's useful.
 AUTOMATIC_REWARD_COSTS = {
     "message_effect": 10,
     "gigantify_an_emote": 30,
@@ -27,11 +26,6 @@ SUB_VALUES = {
     2000: 10.00,
     3000: 25.00,
 }
-
-
-def get_token(token_file: Path) -> Dict[str, str]:
-    with open(token_file, 'r') as f:
-        return cast(Dict[str, str], json.load(f))
 
 
 class OngWatch_Twitch(Client):
@@ -124,10 +118,9 @@ class OngWatch_Twitch(Client):
         if (m := self.request_re.match(chatmsg)):
             user = m.group("user")
             title = m.group("title")
-            req_url = self.request_urls.get(user, "")
+            req_url = self.request_urls.pop(user, "")
             linkstr = f'=HYPERLINK("{req_url}", "{title}")'
             printextra(ts=now(), message=f"SONG REQUEST FROM {user}: {linkstr}")
-            del self.request_urls[user]
             return
 
         self.logger.debug(f"Nightbot message, not interesting: {chatmsg}")

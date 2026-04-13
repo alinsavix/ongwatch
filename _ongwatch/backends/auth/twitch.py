@@ -2,7 +2,7 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import Dict, cast
+from typing import Dict
 
 from twitchio import Client
 from twitchio.authentication.scopes import Scopes as TIOScopes
@@ -36,12 +36,6 @@ USER_SCOPES = TIOScopes([
     "moderator:read:unban_requests",
     "moderator:read:suspicious_users",
 ])
-
-
-# FIXME: dedupe this
-def get_token(token_file: Path) -> Dict[str, str]:
-    with open(token_file, 'r') as f:
-        return cast(Dict[str, str], json.load(f))
 
 
 def write_token(token_file: Path, token: Dict[str, str]) -> None:

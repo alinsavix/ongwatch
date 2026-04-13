@@ -1,13 +1,12 @@
 # FIXME: switch to use astro, maybe?
 import argparse
-# import logging
 import logging
 from typing import Any, Dict
 
+from _ongwatch.util import log, now, out, printsupport
+
 import socketio
 from tdvutil import ppretty
-
-from _ongwatch.util import log, now, out, printsupport
 
 
 # FIXME: many of the handlers need their arguments to be properly typed

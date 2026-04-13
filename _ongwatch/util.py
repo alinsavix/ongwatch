@@ -1,9 +1,10 @@
 import datetime
+import json
 import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import aiohttp
 import pytz
@@ -56,6 +57,11 @@ def printextra(ts: int, message: str):
     # FIXME: super sloppy
     print("  " + message + "\n", file=sys.stderr)
     sys.stderr.flush()
+
+
+def get_token(token_file: Path) -> Dict[str, str]:
+    with open(token_file, 'r') as f:
+        return cast(Dict[str, str], json.load(f))
 
 
 async def get_json_url(url) -> Dict[str, Any]:

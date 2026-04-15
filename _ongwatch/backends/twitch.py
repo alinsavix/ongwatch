@@ -112,7 +112,7 @@ class OngWatch_Twitch(Client):
         if (m := self.rafflewin_re.match(chatmsg)):
             user = m.group("user")
             self.logger.info(f"Nightbot announces raffle winner: {user}")
-            printsupport(ts=now(), supporter=user, type="Raffle", amount=0.0)
+            printsupport(ts=now(), supporter=user, support_type="Raffle", amount=0.0)
             return
 
         if (m := self.request_re.match(chatmsg)):
@@ -186,13 +186,13 @@ class OngWatch_Twitch(Client):
 
         value = SUB_VALUES[tier]
         self.logger.info(f"output sub: {value} for {recipient}")
-        printsupport(ts=now(), gifter=gifter, supporter=recipient, type=sub_str, amount=value)
+        printsupport(ts=now(), gifter=gifter, supporter=recipient, support_type=sub_str, amount=value)
 
     async def event_bits_use(self, payload: ChannelBitsUse) -> None:
         self.logger.debug(f"Bits use received: {payload.bits}")
         user_name = payload.user.display_name if payload.user else "Unknown"
         self.logger.info(f"output bit use: {payload.bits} for {user_name}")
-        printsupport(ts=now(), supporter=user_name, type="Bits", amount=payload.bits / 100.0)
+        printsupport(ts=now(), supporter=user_name, support_type="Bits", amount=payload.bits / 100.0)
 
     async def event_hype_train(self, payload: HypeTrainBegin) -> None:
         self.logger.debug(f"Hype train begin received")
@@ -210,7 +210,7 @@ class OngWatch_Twitch(Client):
         from_user = payload.from_broadcaster.display_name
         viewers = payload.viewer_count
         self.logger.info(f"output raid: {viewers} from {from_user}")
-        printsupport(ts=now(), supporter=from_user, type=f"Raid - {viewers}", amount=0.0)
+        printsupport(ts=now(), supporter=from_user, support_type=f"Raid - {viewers}", amount=0.0)
 
 
 async def start(args: argparse.Namespace, creds: Dict[str, str] | None, logger: logging.Logger) -> None:
@@ -230,4 +230,5 @@ async def start(args: argparse.Namespace, creds: Dict[str, str] | None, logger: 
     async with client:
         validated = await client.add_token(tokens['token'], tokens['refresh'])
         client.token_user_id = validated.user_id  # store for setup_hook
-        await client.start(load_tokens=False, with_adapter=False)
+        # no need to save our tokens, since we're using DCF tokens
+        await client.start(load_tokens=False, save_tokens=False, with_adapter=False)

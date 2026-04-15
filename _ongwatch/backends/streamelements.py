@@ -45,12 +45,12 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
         t = event['type']
         if t == "tip":
             if event.get("isMock", False):
-                type = "Tip_TEST"
+                support_type = "Tip_TEST"
             else:
-                type = "Tip"
+                support_type = "Tip"
             amount = float(event['data'].get("amount", 0.0))
             user = event['data'].get("username", "UnknownUser")
-            printsupport(now(), supporter=user, type=type, amount=amount)
+            printsupport(now(), supporter=user, support_type=support_type, amount=amount)
             self.logger.info(f"output tip: {amount} by {user}")
         else:
             self.logger.debug(f"Ignoring event of type {t}: {event}")

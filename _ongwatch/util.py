@@ -36,10 +36,11 @@ def timestr_est(ts: int) -> str:
     return eastern_time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def printsupport(ts: int, gifter: str = "", supporter: str = "", type: str = "",
-                 amount: float = 0.0, comment: str = ""):
+def printsupport(ts: int, gifter: str = "", supporter: str = "",
+                 support_type: str = "", amount: float = 0.0,
+                 comment: str = "") -> None:
     ts_str = timestr_est(ts)
-    outstr = f"{ts_str}\t\t{gifter}\t{supporter}\t{type}\t${amount:0.2f}\tna\t{comment}"
+    outstr = f"{ts_str}\t\t{gifter}\t{supporter}\t{support_type}\t${amount:0.2f}\tna\t{comment}"
     print(outstr, file=sys.stdout)
     sys.stdout.flush()
 

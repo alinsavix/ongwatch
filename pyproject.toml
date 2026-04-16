@@ -3,9 +3,9 @@ name = "ongwatch"
 version = "0.0.0"
 description = "Watch for stream events and share them via a message bus"
 readme = { file = "README.md", content-type = "text/markdown" }
-license = {text = "GPL-3.0-or-later"}
+license = { text = "GPL-3.0-or-later" }
 authors = [ { name = "TDV Alinsa", email = "alinsa-github@lupine.org" } ]
-keywords = ["twitch", "streaming", "events", "message-bus"]
+keywords = [ "twitch", "streaming", "events", "message-bus" ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -20,7 +20,7 @@ classifiers = [
 requires-python = ">=3.13.10,<3.14"
 
 dependencies = [
-    "twitchio>=3.0.0, <4.0.0",
+    "twitchio>=3.2.2, <4.0.0",
     "python-socketio[client,asyncio_client]==4.6.1",
     "tdvutil",
     "pytz",
@@ -57,7 +57,7 @@ ongwatch = "ongwatch:main"
 
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = [ "hatchling", "hatch-vcs" ]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -69,7 +69,7 @@ fallback-version = "0.0.0"
 version-file = "_ongwatch/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["_ongwatch"]
+packages = [ "_ongwatch" ]
 
 [tool.hatch.version.raw-options]
 version_scheme = "no-guess-dev"
@@ -117,15 +117,9 @@ ignore = [
 
 
 [tool.isort]
-sections = [
-    "FUTURE",
-    "STDLIB",
-    "FIRSTPARTY",
-    "THIRDPARTY",
-    "LOCALFOLDER",
-]
+sections = [ "FUTURE", "STDLIB", "FIRSTPARTY", "THIRDPARTY", "LOCALFOLDER" ]
 
-known_first_party = [ ]
+known_first_party = [  ]
 
 
 # We're only going to set a couple of sphinx-pyproject values here -- things

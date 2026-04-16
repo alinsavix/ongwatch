@@ -22,20 +22,20 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     creds = get_credentials(args.credentials_file, backend, args.environment)
     if creds is None:
         logger.error(f"No credentials found for {backend}")
-        return False
+        return 1
 
     try:
         module = backends.get_backend(f"auth.{backend}")
     except ModuleNotFoundError as e:
         logger.error(f"No such backend '{backend}': {e}")
-        return False
+        return 1
 
     if "auth" not in dir(module):
         logger.error(f"No auth handler available for Backend '{backend}'")
-        return False
+        return 1
 
     authfunc: BackendAuthHandler = module.auth
-    return await authfunc(args, creds, logging.getLogger(args.auth))
+    return 0 if await authfunc(args, creds, logging.getLogger(args.auth)) else 1
 
 
 async def async_main(args: argparse.Namespace) -> int:
@@ -200,13 +200,6 @@ def main() -> int:
     # FIXME: is this the same as calling asyncio.run() with debug=True?
     # logging.getLogger("asyncio").setLevel(logging.DEBUG)
 
-    # FIXME: This got flagged with the following, verify and fix if needed:
-    # auth() returns True on success and False on failure. main() does
-    # sys.exit(main()), so True → sys.exit(1) (shell failure) and False →
-    # sys.exit(0) (shell success). Every successful auth run exits with
-    # code 1. The three return False error cases in do_auth_flow should
-    # return 1, and the final line should be return 0
-    # if (await authfunc(...)) else 1.
     if args.auth is not None:
         return asyncio.run(do_auth_flow(args, args.auth, logging.getLogger(f"auth.{args.auth}")), debug=args.debug_asyncio)
 

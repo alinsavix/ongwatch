@@ -332,9 +332,9 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 2 — Output protocol (`_ongwatch/outputs/__init__.py`)
 
-- [ ] `SendStatus` enum (`HANDLED`, `REJECTED`, `TRANSIENT`, `ERROR`)
-- [ ] `Output` Protocol (`start`, `stop`, `send`, `heartbeat`)
-- [ ] Output registry (`OUTPUT_LIST`, `get_output(name)`)
+- [x] `SendStatus` enum (`HANDLED`, `REJECTED`, `TRANSIENT`, `ERROR`)
+- [x] `Output` Protocol (`start`, `stop`, `send`, `heartbeat`)
+- [x] Output registry (`OUTPUT_LIST`, `get_output(name)`)
 
 ### Phase 3 — Dispatcher (`_ongwatch/dispatcher.py`)
 

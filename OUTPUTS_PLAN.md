@@ -365,10 +365,10 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 6 — Smoke test (bumplog only)
 
-- [ ] Run with `[outputs.bumplog.production]` configured; trigger a test event; verify tab-separated line appears in file
-- [ ] Verify `path = "-"` routes to stdout
-- [ ] Verify heartbeat lines appear at configured interval
-- [ ] Verify all three backends emit events correctly after the refactor
+- [x] Run with `[outputs.bumplog.production]` configured; trigger a test event; verify tab-separated line appears in file
+- [x] Verify `path = "-"` routes to stdout
+- [x] Verify heartbeat lines appear at configured interval
+- [x] Verify all three backends emit events correctly after the refactor
 
 ### Phase 7 — MockOutput (`_ongwatch/outputs/testing.py`)
 

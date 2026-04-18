@@ -1,13 +1,12 @@
 # FIXME: switch to use astro, maybe?
 import argparse
-# import logging
 import logging
 from typing import Any, Dict
 
+from _ongwatch.util import log, now, out, printsupport
+
 import socketio
 from tdvutil import ppretty
-
-from _ongwatch.util import get_json_url, log, now, out, printsupport
 
 
 # FIXME: many of the handlers need their arguments to be properly typed
@@ -47,11 +46,11 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
             amount = float(event["message"][0].get("amount", 0.0))
             user = event["message"][0].get("from", "UnknownUser")
             if event["message"][0].get("isTest", False):
-                type = "Tip_TEST"
+                support_type = "Tip_TEST"
             else:
-                type = "Tip"
+                support_type = "Tip"
 
-            printsupport(now(), supporter=user, type=type, amount=amount)
+            printsupport(now(), supporter=user, support_type=support_type, amount=amount)
             self.logger.info(f"output tip: {amount} by {user}")
         else:
             self.logger.debug(f"Ignoring event of type {t}: {event}")

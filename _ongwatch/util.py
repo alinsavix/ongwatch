@@ -1,15 +1,15 @@
 import datetime
+import json
 import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import aiohttp
 import pytz
 import toml
 from tdvutil import ppretty
-from tdvutil.argparse import CheckFile
 
 
 # FIXME: use real logging ffs
@@ -36,10 +36,11 @@ def timestr_est(ts: int) -> str:
     return eastern_time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def printsupport(ts: int, gifter: str = "", supporter: str = "", type: str = "",
-                 amount: float = 0.0, comment: str = ""):
+def printsupport(ts: int, gifter: str = "", supporter: str = "",
+                 support_type: str = "", amount: float = 0.0,
+                 comment: str = "") -> None:
     ts_str = timestr_est(ts)
-    outstr = f"{ts_str}\t\t{gifter}\t{supporter}\t{type}\t${amount:0.2f}\tna\t{comment}"
+    outstr = f"{ts_str}\t\t{gifter}\t{supporter}\t{support_type}\t${amount:0.2f}\tna\t{comment}"
     print(outstr, file=sys.stdout)
     sys.stdout.flush()
 
@@ -56,6 +57,11 @@ def printextra(ts: int, message: str):
     # FIXME: super sloppy
     print("  " + message + "\n", file=sys.stderr)
     sys.stderr.flush()
+
+
+def get_token(token_file: Path) -> Dict[str, str]:
+    with open(token_file, 'r') as f:
+        return cast(Dict[str, str], json.load(f))
 
 
 async def get_json_url(url) -> Dict[str, Any]:

@@ -1,21 +1,19 @@
-# See https://twitchpy.readthedocs.io/ for docs
-
 import argparse
-import json
 import logging
 import re
-from pathlib import Path
-from typing import Any, Dict, cast
+from typing import Dict
 
-from _ongwatch.util import log, now, out, printextra, printsupport
+from _ongwatch.util import get_token, now, out, printextra, printsupport
 
-from tdvutil import ppretty
-from twitch import Client
-from twitch.errors import HTTPException
-from twitch.types import eventsub
+from twitchio import Client, eventsub
+from twitchio.models.eventsub_ import (ChannelBitsUse, ChannelRaid,
+                                       ChatMessage, ChatNotification,
+                                       HypeTrainBegin, HypeTrainEnd,
+                                       StreamOffline, StreamOnline)
 
 # Best I can tell, this info is simply not available from the API,
-# so we have to hardcode it. Units are in bits.
+# so we have to hardcode it. Units are in bits. Not currently used,
+# but keeping around in case it's useful.
 AUTOMATIC_REWARD_COSTS = {
     "message_effect": 10,
     "gigantify_an_emote": 30,
@@ -23,74 +21,70 @@ AUTOMATIC_REWARD_COSTS = {
 }
 
 # units are in dollars
-# FIXME: the keys should actually be strings, per twitch docs
 SUB_VALUES = {
     1000: 5.00,
     2000: 10.00,
     3000: 25.00,
 }
 
-def get_token(token_file: Path) -> Dict[str, str]:
-    with open(token_file, 'r') as f:
-        return cast(Dict[str, str], json.load(f))
 
 class OngWatch_Twitch(Client):
     botargs: argparse.Namespace
     logger: logging.Logger
-    request_urls: Dict[str, str] = {}
+    token_user_id: str
+    request_urls: Dict[str, str]
 
-    def __init__(self, client_id: str, client_secret: str, **options: Any) -> None:
-        if "botargs" in options:
-            self.botargs = options["botargs"]
+    def __init__(self, client_id: str, client_secret: str,
+                 botargs: argparse.Namespace, logger: logging.Logger) -> None:
+        self.botargs = botargs
+        self.logger = logger
+        self.request_urls = {}
+        super().__init__(client_id=client_id, client_secret=client_secret)
 
-        if "logger" in options:
-            self.logger = options["logger"]
-        else:
-            self.logger = logging.getLogger("twitch.client")
+    async def setup_hook(self) -> None:
+        uid = self.token_user_id
 
-        super().__init__(client_id, client_secret, **options)
+        subs = [
+            eventsub.ChatMessageSubscription(
+                broadcaster_user_id=uid,
+                user_id=uid,
+            ),
+            eventsub.ChatNotificationSubscription(
+                broadcaster_user_id=uid,
+                user_id=uid,
+            ),
+            eventsub.ChannelBitsUseSubscription(
+                broadcaster_user_id=uid,
+            ),
+            eventsub.StreamOnlineSubscription(
+                broadcaster_user_id=uid,
+            ),
+            eventsub.StreamOfflineSubscription(
+                broadcaster_user_id=uid,
+            ),
+            eventsub.HypeTrainBeginSubscription(
+                broadcaster_user_id=uid,
+            ),
+            eventsub.HypeTrainEndSubscription(
+                broadcaster_user_id=uid,
+            ),
+            eventsub.ChannelRaidSubscription(
+                to_broadcaster_user_id=uid,
+            ),
+        ]
 
+        for sub in subs:
+            await self.subscribe_websocket(payload=sub, token_for=uid)
 
-    # @staticmethod
-    # async def on_error(event_name: str, error: Exception, /, *args: Any, **kwargs: Any) -> None:
-    #     log(f"INFO: Error: {error}")
-
-    # async def setup_hook(self) -> None:
-    #     """Called when the client is setting up"""
-    #     log("INFO: Setting up client")
-
-    async def on_connect(self) -> None:
-        self.logger.info('connection established')
-
-    async def on_disconnect(self) -> None:
-        self.logger.warning(f'disconnected')
-
-    async def on_ready(self) -> None:
-        """Called when the client is ready."""
-        assert self.user is not None
-        assert self.channel is not None
-
+    async def event_ready(self) -> None:
         self.logger.info("Client is ready")
-        self.logger.info(f"User: {self.user.display_name} ({self.user.id})")
-        self.logger.info(f"{self.total_subscription_cost} of {self.max_subscription_cost} subscription points used")
-        self.logger.info(f"channel liveness: {await self.channel.stream.get_live()}")
 
-        # total_subs = await self.channel.get_total_subscriptions()
-        # total_pts = await self.channel.get_subscription_points()
-        # log(f"Subscriptions: {total_subs} ({total_pts} pts)")
+    async def event_stream_online(self, payload: StreamOnline) -> None:
+        self.logger.debug(f"Stream online received")
+        out(f"=== ONLINE (type={payload.type} @ {payload.started_at}) ===")
 
-        # log("TW: Listening for events")
-
-    # Only happens if socket_debug is true
-    async def on_socket_raw_receive(self, data: Any) -> None:
-        self.logger.debug(f"Socket raw receive: {data}")
-
-    async def on_stream_online(self, data: eventsub.streams.StreamOnlineEvent) -> None:
-        self.logger.info(f"Stream online received: {data}")
-        out(f"=== ONLINE (type={data["type"]} @ {data["started_at"]} ===")
-
-    async def on_stream_offline(self, data: eventsub.streams.StreamOfflineEvent) -> None:
-        self.logger.info(f"Stream offline received: {data}")
+    async def event_stream_offline(self, payload: StreamOffline) -> None:
+        self.logger.debug(f"Stream offline received")
         out("=== OFFLINE ===")
 
     request_re = re.compile(r"""
@@ -114,53 +108,37 @@ class OngWatch_Twitch(Client):
         You.won.the.giveaway
     """, re.VERBOSE)
 
-    # FIXME: should we pass this already extracted fields?
-    async def handle_nightbot(self, data: eventsub.chat.MessageEvent | eventsub.chat.NotificationEvent) -> None:
-        self.logger.debug(f"Handling message as nightbot message")
-        chatmsg = data.get("message", {}).get("text", "")
-
+    def _handle_nightbot_text(self, chatmsg: str) -> None:
         if (m := self.rafflewin_re.match(chatmsg)):
             user = m.group("user")
             self.logger.info(f"Nightbot announces raffle winner: {user}")
-            printsupport(ts=now(), supporter=user, type="Raffle", amount=0.0)
+            printsupport(ts=now(), supporter=user, support_type="Raffle", amount=0.0)
             return
 
         if (m := self.request_re.match(chatmsg)):
             user = m.group("user")
-            # ytname = m.group("ytname")
             title = m.group("title")
-            req_url = self.request_urls.get(user, "")
-
+            req_url = self.request_urls.pop(user, "")
             linkstr = f'=HYPERLINK("{req_url}", "{title}")'
             printextra(ts=now(), message=f"SONG REQUEST FROM {user}: {linkstr}")
-            del self.request_urls[user]
             return
 
-        # else, wasn't interesting
-        self.logger.debug(f"Got a message from nightbot, but not one we care about: {chatmsg}")
-        return
-
+        self.logger.debug(f"Nightbot message, not interesting: {chatmsg}")
 
     # FIXME: split chat message handling somehow, not sure what makes sense
-    async def on_chat_message(self, data: eventsub.chat.MessageEvent) -> None:
-        self.logger.debug(f"Chat message received: {data}")
+    async def event_message(self, payload: ChatMessage) -> None:
+        self.logger.debug(f"Chat message received")
+        chatter_name = payload.chatter.display_name
 
-        if data.get("chatter_user_name") == "Nightbot":
-            await self.handle_nightbot(data)
+        if chatter_name == "Nightbot":
+            self._handle_nightbot_text(payload.text)
             return
 
-        chatmsg = data.get("message", {}).get("text", "")
-
-        # For !sr handling, we need to track the requester when they make the
-        # request, since the nightbot response doesn't actually include the URL.
-        if chatmsg.lower().startswith("!sr "):
-            user = data.get("chatter_user_name", "UnknownUser")
-            req_url = chatmsg.split(" ")[1]
-
+        if payload.text.lower().startswith("!sr "):
+            user = chatter_name
+            req_url = payload.text.split(" ")[1]
             self.request_urls[user] = req_url
             self.logger.debug(f"Saved song request from {user}: {req_url}")
-            return
-
 
     # This is kinda a train wreck -- the only way to get all the
     # info we need for logging subs/gift subs/resubs/etc, is to
@@ -170,33 +148,34 @@ class OngWatch_Twitch(Client):
     # subs/etc, but they don't have all the info we need.
     #
     # Sigh.
-    async def on_chat_notification(self, data: eventsub.chat.NotificationEvent) -> None:
-        self.logger.debug(f"Chat notification received: {data}")
+    async def event_chat_notification(self, payload: ChatNotification) -> None:
+        self.logger.debug(f"Chat notification received")
+        chatter_name = payload.chatter.display_name
 
-        if data.get("chatter_user_name") == "Nightbot":
-            await self.handle_nightbot(data)
+        if chatter_name == "Nightbot":
+            self._handle_nightbot_text(payload.text)
             return
 
-        if data["chatter_is_anonymous"]:
+        if payload.anonymous:
             chatter = "AnAnonymousGifter"
         else:
-            chatter = data["chatter_user_name"]
+            chatter = chatter_name
 
-        if data["sub_gift"] is not None:
+        if payload.sub_gift is not None:
             gifter = chatter
-            recipient = data["sub_gift"]["recipient_user_name"]
-            tier = int(data["sub_gift"]["sub_tier"])
+            recipient = payload.sub_gift.recipient.display_name
+            tier = int(payload.sub_gift.tier)   # "1000" -> 1000
             months = 0
-        elif data["sub"] is not None:
+        elif payload.sub is not None:
             gifter = ""
             recipient = chatter
-            tier = int(data["sub"]["sub_tier"])
+            tier = int(payload.sub.tier)
             months = 1
-        elif data["resub"] is not None:
+        elif payload.resub is not None:
             gifter = ""
             recipient = chatter
-            tier = int(data["resub"]["sub_tier"])
-            months = data["resub"]["cumulative_months"] or 0
+            tier = int(payload.resub.tier)
+            months = payload.resub.cumulative_months or 0
         else:
             return
 
@@ -206,86 +185,50 @@ class OngWatch_Twitch(Client):
             sub_str = f"Sub #{months}"
 
         value = SUB_VALUES[tier]
-
         self.logger.info(f"output sub: {value} for {recipient}")
-        printsupport(ts=now(), gifter=gifter, supporter=recipient, type=sub_str, amount=value)
+        printsupport(ts=now(), gifter=gifter, supporter=recipient, support_type=sub_str, amount=value)
 
-    # async def on_cheer(self, data: eventsub.bits.CheerEvent) -> None:
-    #     # print(type(data))
-    #     self.logger.debug(f"Cheer received: {data}")
-    #     self.logger.info(f"output cheer: {data['bits']} for {data['user_name'] or 'Unknown'}")
-    #     printsupport(ts=now(), supporter=data["user_name"] or "Unknown", type="Bits", amount=data["bits"] / 100.0)
+    async def event_bits_use(self, payload: ChannelBitsUse) -> None:
+        self.logger.debug(f"Bits use received: {payload.bits}")
+        user_name = payload.user.display_name if payload.user else "Unknown"
+        self.logger.info(f"output bit use: {payload.bits} for {user_name}")
+        printsupport(ts=now(), supporter=user_name, support_type="Bits", amount=payload.bits / 100.0)
 
-    async def on_bits_use(self, data: eventsub.bits.BitsEvent) -> None:
-        self.logger.debug(f"Bits use received: {data}")
-        self.logger.info(f"output bit use: {data['bits']} for {data['user_name'] or 'Unknown'}")
-        printsupport(ts=now(), supporter=data["user_name"]
-                     or "Unknown", type="Bits", amount=data["bits"] / 100.0)
-
-    # async def on_points_automatic_reward_redemption_add_v2(self, data: eventsub.interaction.AutomaticRewardRedemptionAddEventV2) -> None:
-    #     self.logger.debug(f"Points automatic reward redemption add received: {data}")
-
-    #     user = data["user_name"] or "Unknown"
-    #     reward = data["reward"]
-
-    #     if reward["type"] not in AUTOMATIC_REWARD_COSTS:
-    #         return
-
-    #     cost = AUTOMATIC_REWARD_COSTS[reward["type"]] / 100.0
-
-    #     self.logger.info(f"output redemption: {cost} for {user}")
-    #     printsupport(ts=now(), supporter=user, type="Bits", amount=cost)
-
-    async def on_hype_train_begin(self, data: eventsub.interaction.HypeTrainEvent) -> None:
-        self.logger.debug(f"Hype train begin received: {data}")
-        self.logger.info(f"output hype train begin")
+    async def event_hype_train(self, payload: HypeTrainBegin) -> None:
+        self.logger.debug(f"Hype train begin received")
         out("=== HYPE TRAIN BEGIN ===")
 
-    # async def on_hype_train_progress(self, data: eventsub.interaction.HypeTrainEvent):
-    #     log(f"INFO: Hype train progress received: {data}")
+    async def event_hype_train_end(self, payload: HypeTrainEnd) -> None:
+        self.logger.debug(f"Hype train end received")
+        out(f"=== HYPE TRAIN END (level={payload.level}, total={payload.total}) ===")
 
-    async def on_hype_train_end(self, data: eventsub.interaction.HypeTrainEndEvent) -> None:
-        self.logger.debug(f"Hype train end received: {data}")
-        self.logger.info(f"output hype train end (level={data['level']}, total={data['total']})")
-        out(f"=== HYPE TRAIN END (level={data['level']}, total={data['total']}) ===")
-
-
-    # async def on_ad_break_begin(self, data: eventsub.streams.AdBreakBeginEvent):
-    #     self.logger.debug(f"Ad break begin received: {data}")
-
-    # Incoming raid (for now, don't log outgoing raids)
-    async def on_raid(self, data: eventsub.streams.RaidEvent) -> None:
-        self.logger.debug(f"Raid received: {data}")
-        assert self.user is not None
-        if data["from_broadcaster_user_id"] == self.user.id:
+    async def event_raid(self, payload: ChannelRaid) -> None:
+        self.logger.debug(f"Raid received")
+        if payload.from_broadcaster.id == self.token_user_id:
             return
 
-        from_user = data["from_broadcaster_user_name"]
-        to_user = data["to_broadcaster_user_name"]
-        viewers = data["viewers"]
-
+        from_user = payload.from_broadcaster.display_name
+        viewers = payload.viewer_count
         self.logger.info(f"output raid: {viewers} from {from_user}")
-        printsupport(ts=now(), supporter=from_user, type=f"Raid - {viewers}", amount=0.0)
+        printsupport(ts=now(), supporter=from_user, support_type=f"Raid - {viewers}", amount=0.0)
 
 
-async def start(args: argparse.Namespace, creds: Dict[str, str]|None, logger: logging.Logger) -> None:
+async def start(args: argparse.Namespace, creds: Dict[str, str] | None, logger: logging.Logger) -> None:
     if creds is None:
         raise ValueError("No credentials specified")
 
     tokens = get_token(args.token_file)
-    climode = True if args.environment == 'localdev' else False
+    client = OngWatch_Twitch(
+        client_id=creds['client_id'],
+        client_secret=creds['client_secret'],
+        botargs=args,
+        logger=logger,
+    )
 
     logger.info(f"Starting Twitch backend")
-    client = OngWatch_Twitch(client_id=creds['client_id'], client_secret=creds['client_secret'],
-                      botargs=args, logger=logger, socket_debug=True, reconnect=True, cli=climode)
 
-    try:
-        await client.start(access_token=tokens['token'], refresh_token=tokens["refresh"], reconnect=True)
-    except HTTPException as e:
-        logger.error(f"Unable to connect to twitch, HTTP error: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"exception: {e}")
-        raise
-    finally:
-        await client.close()
+    async with client:
+        validated = await client.add_token(tokens['token'], tokens['refresh'])
+        client.token_user_id = validated.user_id  # store for setup_hook
+        # no need to save our tokens, since we're using DCF tokens
+        await client.start(load_tokens=False, save_tokens=False, with_adapter=False)

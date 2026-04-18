@@ -1,48 +1,41 @@
 #!/usr/bin/env -S uv run --script --quiet
 import argparse
 import asyncio
-import importlib
 import io
 import logging
 import platform
 import signal
 import sys
 from pathlib import Path
-from typing import (Any, Awaitable, Callable, Coroutine, Dict, Optional, Text,
-                    cast)
+from typing import cast
 
 import _ongwatch.backends as backends
+from _ongwatch.backends import BackendAuthHandler, BackendStartHandler
 from _ongwatch.util import get_credentials
 
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
-# FIXME: generate this dynamically?
-BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
-
-# FIXME: define these in a backend module or similar
-BackendAuthHandler = Callable[[argparse.Namespace, Dict[str, str] | None, logging.Logger], Coroutine[None, None, bool]]
-BackendStartHandler = Callable[[argparse.Namespace, Dict[str, str] | None, logging.Logger], Coroutine[None, None, None]]
 
 async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.Logger) -> int:
     logger.setLevel(logging.WARNING)  # quiet things down
     creds = get_credentials(args.credentials_file, backend, args.environment)
     if creds is None:
         logger.error(f"No credentials found for {backend}")
-        return False
+        return 1
 
     try:
         module = backends.get_backend(f"auth.{backend}")
     except ModuleNotFoundError as e:
         logger.error(f"No such backend '{backend}': {e}")
-        return False
+        return 1
 
     if "auth" not in dir(module):
         logger.error(f"No auth handler available for Backend '{backend}'")
-        return False
+        return 1
 
     authfunc: BackendAuthHandler = module.auth
-    return await authfunc(args, creds, logging.getLogger(args.auth))
+    return 0 if await authfunc(args, creds, logging.getLogger(args.auth)) else 1
 
 
 async def async_main(args: argparse.Namespace) -> int:
@@ -78,9 +71,9 @@ async def async_main(args: argparse.Namespace) -> int:
 
     # Setup Windows-compatible keyboard interrupt handler
     def handle_interrupt():
-        asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
+        loop.call_soon_threadsafe(shutdown_event.set)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     if platform.system() != "Windows":
         loop.add_signal_handler(signal.SIGINT, handle_interrupt)
         loop.add_signal_handler(signal.SIGTERM, handle_interrupt)
@@ -99,14 +92,17 @@ async def async_main(args: argparse.Namespace) -> int:
             [shutdown_task, *tasks],
             return_when=asyncio.FIRST_COMPLETED
         )
+        for task in done:
+            if task is not shutdown_task and not task.cancelled():
+                if exc := task.exception():
+                    logging.error("Backend task failed", exc_info=exc)
     finally:
         logging.info("Shutting down...")
-        # Cancel all running tasks
+        shutdown_task.cancel()
         for task in tasks:
             if not task.done():
                 task.cancel()
-        # Wait for all tasks to be cancelled
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(shutdown_task, *tasks, return_exceptions=True)
 
     return 0
 

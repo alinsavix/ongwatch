@@ -35,6 +35,7 @@ Subtypes are divided into **currently emitted** (backends already generate these
 | `StreamStateEvent` | `state: str` ("online"/"offline") | Twitch stream.online/offline |
 | `HypeTrainEvent` | `kind: str` ("begin"/"end"), `level: int`, `total: int` | Twitch hype_train |
 | `SongRequestEvent` | `title: str`, `requester: str \| None` | Nightbot chat parsing (Twitch-specific) |
+| `RaffleWinEvent` | `winner: str` | Nightbot raffle-winner announcement (Twitch-specific) |
 
 ### Defined/reserved (backends not yet subscribed)
 
@@ -111,7 +112,7 @@ The dispatcher is instantiated once in `ongwatch.py` and injected into every bac
 
 ### Per-output infrastructure (one set per registered output)
 
-- `collections.deque(maxlen=queue_max_size or None)` — used instead of `asyncio.Queue` to support front-insertion for `TRANSIENT` re-enqueuing; 0 = unbounded
+- `collections.deque(maxlen=queue_max_size or None)` — used instead of `asyncio.Queue` to support front-insertion for `TRANSIENT` re-enqueuing; `queue_max_size = 0` means unbounded (no cap)
 - Worker task: see behavior below
 - Circuit state: `Closed` | `Open(retry_at: datetime)`
 - Stats counters: `received`, `handled`, `rejected`, `dropped`, `errored`, `transient_retries`, `queue_depth` (live), `circuit_trips`, `heartbeats_ok`, `heartbeats_failed`, `last_handled_at`, `last_error_at`, `last_heartbeat_at`
@@ -152,7 +153,7 @@ Periodic asyncio task (global `heartbeat_interval`, default 60s). For each outpu
 - **Closed**: call `output.heartbeat()`; on failure, log warning (does not trip circuit by itself — that's queue-driven)
 - **Open**: if `retry_at` has passed, call `output.heartbeat()` as probe; success → transition to Closed and log recovery; failure → reset `retry_at = now + cooldown`, log
 
-### Circuit-break config (per output, in credentials.toml)
+### Circuit-break config (per output, in ongwatch.toml)
 
 ```toml
 [outputs.mqtt.production]
@@ -166,7 +167,7 @@ circuit_break_flush_queue = true    # discard buffered events when tripping
 max_retries = 3                     # TRANSIENT retry attempts before treating as ERROR (default: 3)
 ```
 
-`on_error = "drop"` is equivalent to `queue_max_size = 0` — no queue, events always dropped on failure. Both spellings should be accepted.
+`on_error = "drop"` means no queue at all — events are always dropped on failure without buffering. This is distinct from `queue_max_size = 0` (which means an unbounded queue). Both `on_error = "drop"` and `on_error = "queue"` should be accepted; when `on_error = "queue"`, `queue_max_size` and `queue_overflow` apply.
 
 Stats for all outputs are accessible on the dispatcher (e.g. `dispatcher.stats()`) and can be surfaced via logging, a signal handler, or a future stats output. How stats are *exposed* is out of scope for this plan.
 
@@ -187,7 +188,7 @@ async def start(
 ) -> None
 ```
 
-All `printsupport()`, `out()`, and `printextra()` calls are replaced with `await dispatcher.emit(SomeEvent(...))`.
+All `printsupport()`, `out()`, and `printextra()` calls are replaced with `dispatcher.emit(SomeEvent(...))`. Note: `emit()` is **synchronous** — it enqueues and returns immediately; no `await` is needed or appropriate.
 
 Each backend gains a private mapping layer of pure functions (e.g. `_map_bits_event(payload) -> CashSupportEvent`) that convert raw backend types to normalized events. These are separate from the event handlers to support future unit testing without a live connection.
 
@@ -239,20 +240,34 @@ Build in this order; each proves the protocol before the next.
 **Modified:** `ongwatch.py`
 
 In `async_main()`:
-1. Read `[outputs.*]` sections from `credentials.toml`, build list of enabled outputs
+
+1. Read `[outputs.*]` sections from `ongwatch.toml`, build list of enabled outputs
 2. Call `output.start()` for each
 3. Instantiate `Dispatcher(outputs, heartbeat_interval=...)`
 4. Start dispatcher's heartbeat task
 5. Pass `dispatcher` into each backend `start()` call
-6. On shutdown: cancel backends → flush dispatcher queues → call `output.stop()` for each
+6. On shutdown:
+   - Cancel/stop all backends first — no new events should be emitted during drain
+   - Call `dispatcher.drain(timeout=30)` — processes remaining queued events for each output, up to the timeout; events still queued after timeout are dropped with a warning
+   - Call `output.stop()` for each output (flush, disconnect, close)
 
 ---
 
-## 7. Configuration (credentials.toml)
+## 7. Configuration
 
-Outputs follow the existing `[section.name.environment]` pattern already stubbed in the file:
+Configuration is split across two files:
+
+- **`credentials.toml`** — secrets only (API keys, tokens, client IDs). Existing structure unchanged.
+- **`ongwatch.toml`** — non-secret runtime configuration: which outputs are enabled, queue/circuit-breaker tuning, dispatcher settings. Safe to commit (no secrets).
+
+`ongwatch.py` loads both files at startup. `get_credentials()` continues to read from `credentials.toml`; a new `get_config()` helper reads from `ongwatch.toml` using the same `[section.name.environment]` pattern.
+
+Output sections in `ongwatch.toml`:
 
 ```toml
+[dispatcher]
+heartbeat_interval = 60   # seconds
+
 [outputs.bumplog.production]
 path = "/path/to/bump.log"
 on_error = "queue"
@@ -281,6 +296,8 @@ queue_overflow = "drop_oldest"
 max_retries = 3
 ```
 
+Any output that requires secrets (e.g. an MQTT broker with authentication) keeps those credentials in `credentials.toml` under its own section, separate from the queue/behavior config in `ongwatch.toml`.
+
 ---
 
 ## Critical Files
@@ -299,20 +316,82 @@ max_retries = 3
 | `_ongwatch/backends/streamelements.py` | Modified | Same |
 | `_ongwatch/backends/streamlabs.py` | Modified | Same |
 | `ongwatch.py` | Modified | Initialize outputs, create dispatcher, pass to backends |
-| `credentials.toml` | Modified | Add [outputs.*] sections |
+| `ongwatch.toml` | New | Non-secret runtime config: outputs, queue tuning, dispatcher settings |
+| `credentials.toml` | Unchanged | Secrets only — no output config added here |
 | `_ongwatch/util.py` | Modified | Remove printsupport(), printextra() once unused |
 
 ---
 
-## Implementation Order
+## Implementation Phases
 
-1. `_ongwatch/events.py` — event types (no deps, can be reviewed standalone)
-2. `_ongwatch/outputs/__init__.py` — Output protocol + registry
-3. `_ongwatch/dispatcher.py` — dispatcher with queue/circuit logic
-4. `_ongwatch/outputs/bumplog.py` — reference implementation
-5. Wire up: modify `ongwatch.py` + all three backends; delete old util functions
-6. Test end-to-end with bumplog only
-7. Add console, MQTT, SQLite outputs as follow-on
+### Phase 1 — Event types (`_ongwatch/events.py`)
+
+- [ ] `OngwatchEvent` base dataclass (`timestamp`, `backend`, `raw`)
+- [ ] Currently-emitted subtypes: `CashSupportEvent`, `SubscriptionEvent`, `GiftSubEvent`, `RaidEvent`, `StreamStateEvent`, `HypeTrainEvent`, `SongRequestEvent`, `RaffleWinEvent`
+- [ ] Defined/reserved subtypes: `FollowEvent`, `ChannelPointRedemptionEvent`, `PollEvent`, `PredictionEvent`, `CharityDonationEvent`, `GoalEvent`, `ShoutoutEvent`
+
+### Phase 2 — Output protocol (`_ongwatch/outputs/__init__.py`)
+
+- [ ] `SendStatus` enum (`HANDLED`, `REJECTED`, `TRANSIENT`, `ERROR`)
+- [ ] `Output` Protocol (`start`, `stop`, `send`, `heartbeat`)
+- [ ] Output registry (`OUTPUT_LIST`, `get_output(name)`)
+
+### Phase 3 — Dispatcher (`_ongwatch/dispatcher.py`)
+
+- [ ] Per-output state: deque, worker task, circuit state (`Closed`/`Open`), stats counters
+- [ ] `emit(event)` — synchronous enqueue; respects `on_error = "drop"` (no queue) vs `"queue"` mode; applies overflow policy when at capacity
+- [ ] Worker task — dequeues events, calls `output.send()`, handles all `SendStatus` values including `TRANSIENT` retry with exponential backoff
+- [ ] Queue overflow policies: `drop_oldest`, `drop_newest`, `circuit_break`
+- [ ] Circuit breaker — trips on `circuit_break` overflow; re-tests via heartbeat after cooldown; recovers to Closed on success
+- [ ] Heartbeat task — periodic asyncio task; probes each output; drives circuit recovery
+- [ ] `drain(timeout)` — stops accepting new events, waits for each per-output queue to empty up to the timeout, logs any events dropped at deadline
+- [ ] `stats()` — returns per-output counters
+
+### Phase 4 — BumpLog output (`_ongwatch/outputs/bumplog.py`)
+
+- [ ] `start()` / `stop()` — open/close file; `-` or `stdout` maps to `sys.stdout`
+- [ ] `send()` — tab-separated format matching current `printsupport()` for cash/sub events; `REJECTED` for unhandled types
+- [ ] `heartbeat()` — appends `# heartbeat <iso-timestamp>\n`
+
+### Phase 5 — Wire-up
+
+- [ ] Create `ongwatch.toml` with output and dispatcher config
+- [ ] Add `get_config()` helper to `_ongwatch/util.py`
+- [ ] `ongwatch.py`: load outputs from `ongwatch.toml`, call `start()`, create dispatcher, start heartbeat task, pass dispatcher to backends, implement shutdown sequence (cancel backends → drain → stop outputs)
+- [ ] Twitch backend: extract `_map_*` pure functions; replace all `printsupport()` / `out()` / `printextra()` calls with `dispatcher.emit(...)`
+- [ ] StreamElements backend: same
+- [ ] Streamlabs backend: same
+- [ ] Delete `util.printsupport()` and `util.printextra()` (keep `util.out()` as log-to-stderr utility for now)
+
+### Phase 6 — Smoke test (bumplog only)
+
+- [ ] Run with `[outputs.bumplog.production]` configured; trigger a test event; verify tab-separated line appears in file
+- [ ] Verify `path = "-"` routes to stdout
+- [ ] Verify heartbeat lines appear at configured interval
+- [ ] Verify all three backends emit events correctly after the refactor
+
+### Phase 7 — MockOutput (`_ongwatch/outputs/testing.py`)
+
+- [ ] `MockOutput` — captures emitted events in a list; `send()` returns configurable status; `heartbeat()` no-op
+- [ ] Verify dispatcher can be instantiated and driven with `MockOutput` in isolation
+
+### Phase 8 — Console output (`_ongwatch/outputs/console.py`)
+
+- [ ] Human-readable formatting for all currently-emitted event types
+- [ ] `heartbeat()` no-op
+- [ ] Smoke test alongside bumplog
+
+### Phase 9 — SQLite output (`_ongwatch/outputs/sqlite.py`)
+
+- [ ] Schema: one table per event type + `_heartbeat` table; normalized fields + JSON `raw` column
+- [ ] `start()` — open DB, run migrations
+- [ ] `send()` — insert normalized + raw; return `HANDLED`/`REJECTED`
+- [ ] `heartbeat()` — upsert to `_heartbeat`
+- [ ] Smoke test: run with `queue_max_size = 0`; verify records appear
+
+### Phase 10 — MQTT output (`_ongwatch/outputs/mqtt.py`)
+
+> **Blocked** — requires topic hierarchy design doc before implementation. See note in §5c.
 
 ---
 

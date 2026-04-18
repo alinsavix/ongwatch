@@ -25,6 +25,7 @@ dependencies = [
     "tdvutil",
     "pytz",
     "toml",
+    "aiosqlite>=0.22.1",
 ]
 
 

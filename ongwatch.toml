@@ -15,3 +15,9 @@ queue_overflow = "drop_oldest"
 
 [outputs.console.test]
 # no output-specific options needed
+
+[outputs.sqlite.production]
+path = "/var/log/ongwatch.db"
+on_error = "queue"
+queue_max_size = 0   # unbounded — don't lose records
+queue_overflow = "drop_oldest"

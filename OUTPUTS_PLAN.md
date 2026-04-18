@@ -383,11 +383,11 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 9 — SQLite output (`_ongwatch/outputs/sqlite.py`)
 
-- [ ] Schema: one table per event type + `_heartbeat` table; normalized fields + JSON `raw` column
-- [ ] `start()` — open DB, run migrations
-- [ ] `send()` — insert normalized + raw; return `HANDLED`/`REJECTED`
-- [ ] `heartbeat()` — upsert to `_heartbeat`
-- [ ] Smoke test: run with `queue_max_size = 0`; verify records appear
+- [x] Schema: one table per event type + `_heartbeat` table; normalized fields + JSON `raw` column
+- [x] `start()` — open DB, run migrations
+- [x] `send()` — insert normalized + raw; return `HANDLED`/`REJECTED`
+- [x] `heartbeat()` — upsert to `_heartbeat`
+- [x] Smoke test: run with `queue_max_size = 0`; verify records appear
 
 ### Phase 10 — MQTT output (`_ongwatch/outputs/mqtt.py`)
 

@@ -1,0 +1,14 @@
+[dispatcher]
+heartbeat_interval = 60   # seconds
+
+[outputs.bumplog.production]
+path = "/path/to/bump.log"
+on_error = "queue"
+queue_max_size = 100
+queue_overflow = "drop_oldest"
+
+[outputs.bumplog.test]
+path = "-"
+on_error = "queue"
+queue_max_size = 100
+queue_overflow = "drop_oldest"

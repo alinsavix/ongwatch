@@ -355,13 +355,13 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 5 — Wire-up
 
-- [ ] Create `ongwatch.toml` with output and dispatcher config
-- [ ] Add `get_config()` helper to `_ongwatch/util.py`
-- [ ] `ongwatch.py`: load outputs from `ongwatch.toml`, call `start()`, create dispatcher, start heartbeat task, pass dispatcher to backends, implement shutdown sequence (cancel backends → drain → stop outputs)
-- [ ] Twitch backend: extract `_map_*` pure functions; replace all `printsupport()` / `out()` / `printextra()` calls with `dispatcher.emit(...)`
-- [ ] StreamElements backend: same
-- [ ] Streamlabs backend: same
-- [ ] Delete `util.printsupport()` and `util.printextra()` (keep `util.out()` as log-to-stderr utility for now)
+- [x] Create `ongwatch.toml` with output and dispatcher config
+- [x] Add `get_config()` helper to `_ongwatch/util.py`
+- [x] `ongwatch.py`: load outputs from `ongwatch.toml`, call `start()`, create dispatcher, start heartbeat task, pass dispatcher to backends, implement shutdown sequence (cancel backends → drain → stop outputs)
+- [x] Twitch backend: extract `_map_*` pure functions; replace all `printsupport()` / `out()` / `printextra()` calls with `dispatcher.emit(...)`
+- [x] StreamElements backend: same
+- [x] Streamlabs backend: same
+- [x] Delete `util.printsupport()` and `util.printextra()` (keep `util.out()` as log-to-stderr utility for now)
 
 ### Phase 6 — Smoke test (bumplog only)
 

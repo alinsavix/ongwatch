@@ -7,12 +7,15 @@ import platform
 import signal
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import _ongwatch.backends as backends
 from _ongwatch.backends import BackendAuthHandler, BackendStartHandler
+from _ongwatch.dispatcher import Dispatcher, OutputConfig
+from _ongwatch.outputs import get_output
 from _ongwatch.util import get_credentials
 
+import toml
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
@@ -38,7 +41,70 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     return 0 if await authfunc(args, creds, logging.getLogger(args.auth)) else 1
 
 
+def _load_outputs(
+    config: dict[str, Any],
+    environment: str,
+) -> tuple[list[tuple[str, Any, OutputConfig]], list[Any]]:
+    """
+    Parse [outputs.*.<environment>] sections from ongwatch.toml, instantiate
+    each output, and return two parallel lists:
+      - triples suitable for Dispatcher.__init__
+      - the raw output instances (for calling stop() at shutdown)
+    """
+    triples: list[tuple[str, Any, OutputConfig]] = []
+    instances: list[Any] = []
+
+    for output_name, env_map in config.get("outputs", {}).items():
+        if environment not in env_map:
+            continue
+        env_cfg: dict[str, Any] = env_map[environment]
+
+        module = get_output(output_name)
+        output = module.create(env_cfg)
+
+        output_config = OutputConfig(
+            on_error=env_cfg.get("on_error", "queue"),
+            queue_max_size=int(env_cfg.get("queue_max_size", 0)),
+            queue_overflow=env_cfg.get("queue_overflow", "drop_oldest"),
+            circuit_break_cooldown=float(env_cfg.get("circuit_break_cooldown", 300.0)),
+            circuit_break_flush_queue=bool(env_cfg.get("circuit_break_flush_queue", False)),
+            max_retries=int(env_cfg.get("max_retries", 3)),
+        )
+
+        name = f"{output_name}.{environment}"
+        triples.append((name, output, output_config))
+        instances.append(output)
+
+    return triples, instances
+
+
 async def async_main(args: argparse.Namespace) -> int:
+    # ------------------------------------------------------------------
+    # Load ongwatch.toml
+    # ------------------------------------------------------------------
+    config: dict[str, Any] = {}
+    if args.config_file.exists():
+        config = dict(toml.load(args.config_file))
+    else:
+        logging.warning(f"Config file {args.config_file} not found; no outputs will be active")
+
+    dispatcher_section: dict[str, Any] = config.get("dispatcher", {})
+    heartbeat_interval = float(dispatcher_section.get("heartbeat_interval", 60))
+
+    # ------------------------------------------------------------------
+    # Start outputs and build dispatcher
+    # ------------------------------------------------------------------
+    output_triples, output_instances = _load_outputs(config, args.environment)
+
+    for output in output_instances:
+        await output.start()
+
+    dispatcher = Dispatcher(output_triples, heartbeat_interval=heartbeat_interval)
+    await dispatcher.start()
+
+    # ------------------------------------------------------------------
+    # Start backends
+    # ------------------------------------------------------------------
     if not args.enable_backend or args.enable_backend == ["all"]:
         enabled_backends = backends.backend_list()
     else:
@@ -47,7 +113,7 @@ async def async_main(args: argparse.Namespace) -> int:
     enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
 
     logging.info("Ongwatch is in startup")
-    logging.info(f"Enabled backends: {" ".join(enabled_backends)}")
+    logging.info(f"Enabled backends: {' '.join(enabled_backends)}")
 
     tasks: list[asyncio.Task[None]] = []
 
@@ -64,13 +130,13 @@ async def async_main(args: argparse.Namespace) -> int:
             logger.setLevel(logging.INFO)
 
         startfunc: BackendStartHandler = module.start
-        tasks.append(asyncio.create_task(startfunc(args, creds, logger)))
+        tasks.append(asyncio.create_task(startfunc(args, creds, logger, dispatcher)))
 
     shutdown_event = asyncio.Event()
     shutdown_task = asyncio.create_task(shutdown_event.wait())
 
     # Setup Windows-compatible keyboard interrupt handler
-    def handle_interrupt():
+    def handle_interrupt() -> None:
         loop.call_soon_threadsafe(shutdown_event.set)
 
     loop = asyncio.get_running_loop()
@@ -82,12 +148,7 @@ async def async_main(args: argparse.Namespace) -> int:
         signal.signal(signal.SIGINT, lambda signum, frame: handle_interrupt())
         signal.signal(signal.SIGTERM, lambda signum, frame: handle_interrupt())
 
-    # from tdvutil import alintrospect
-    # alintrospect(waits)
-    # alintrospect(tasks[0])
-
     try:
-        # await asyncio.wait()
         done, pending = await asyncio.wait(
             [shutdown_task, *tasks],
             return_when=asyncio.FIRST_COMPLETED
@@ -98,11 +159,23 @@ async def async_main(args: argparse.Namespace) -> int:
                     logging.error("Backend task failed", exc_info=exc)
     finally:
         logging.info("Shutting down...")
+
+        # 1. Stop backends — no new events after this point
         shutdown_task.cancel()
         for task in tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(shutdown_task, *tasks, return_exceptions=True)
+
+        # 2. Drain queues (up to 30 s)
+        await dispatcher.drain(timeout=30)
+
+        # 3. Cancel dispatcher internal tasks
+        await dispatcher.stop()
+
+        # 4. Close each output
+        for output in output_instances:
+            await output.stop()
 
     return 0
 
@@ -116,7 +189,14 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         action=CheckFile(must_exist=True),
-        help="file with discord credentials"
+        help="file with credentials (credentials.toml)"
+    )
+
+    parser.add_argument(
+        "--config-file",
+        type=Path,
+        default=None,
+        help="runtime config file (ongwatch.toml)"
     )
 
     # FIXME: deal with this better -- it's twitch only (for now?)
@@ -178,6 +258,9 @@ def parse_args() -> argparse.Namespace:
     if parsed_args.credentials_file is None:
         parsed_args.credentials_file = Path(__file__).parent / "credentials.toml"
 
+    if parsed_args.config_file is None:
+        parsed_args.config_file = Path(__file__).parent / "ongwatch.toml"
+
     if parsed_args.token_file is None:
         parsed_args.token_file = Path(__file__).parent / f"twitch_user_token.{parsed_args.environment}.json"
 
@@ -197,9 +280,6 @@ def main() -> int:
     logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
 
-    # FIXME: is this the same as calling asyncio.run() with debug=True?
-    # logging.getLogger("asyncio").setLevel(logging.DEBUG)
-
     if args.auth is not None:
         return asyncio.run(do_auth_flow(args, args.auth, logging.getLogger(f"auth.{args.auth}")), debug=args.debug_asyncio)
 
@@ -208,5 +288,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # sys.exit(asyncio.run(main(), debug=True))
     sys.exit(main())

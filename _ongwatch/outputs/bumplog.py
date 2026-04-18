@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime, timezone
-from typing import IO
+from typing import IO, Any
 
 import pytz
 
@@ -140,3 +140,8 @@ class BumpLogOutput:
             return SendStatus.HANDLED
 
         return SendStatus.REJECTED
+
+
+def create(config: dict[str, Any]) -> BumpLogOutput:
+    """Factory called by ongwatch.py when loading outputs from ongwatch.toml."""
+    return BumpLogOutput(path=config.get("path", "-"))

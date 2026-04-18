@@ -377,9 +377,9 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 8 — Console output (`_ongwatch/outputs/console.py`)
 
-- [ ] Human-readable formatting for all currently-emitted event types
-- [ ] `heartbeat()` no-op
-- [ ] Smoke test alongside bumplog
+- [x] Human-readable formatting for all currently-emitted event types
+- [x] `heartbeat()` no-op
+- [x] Smoke test alongside bumplog
 
 ### Phase 9 — SQLite output (`_ongwatch/outputs/sqlite.py`)
 

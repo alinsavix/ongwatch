@@ -12,3 +12,6 @@ path = "-"
 on_error = "queue"
 queue_max_size = 100
 queue_overflow = "drop_oldest"
+
+[outputs.console.test]
+# no output-specific options needed

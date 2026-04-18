@@ -338,14 +338,14 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 3 — Dispatcher (`_ongwatch/dispatcher.py`)
 
-- [ ] Per-output state: deque, worker task, circuit state (`Closed`/`Open`), stats counters
-- [ ] `emit(event)` — synchronous enqueue; respects `on_error = "drop"` (no queue) vs `"queue"` mode; applies overflow policy when at capacity
-- [ ] Worker task — dequeues events, calls `output.send()`, handles all `SendStatus` values including `TRANSIENT` retry with exponential backoff
-- [ ] Queue overflow policies: `drop_oldest`, `drop_newest`, `circuit_break`
-- [ ] Circuit breaker — trips on `circuit_break` overflow; re-tests via heartbeat after cooldown; recovers to Closed on success
-- [ ] Heartbeat task — periodic asyncio task; probes each output; drives circuit recovery
-- [ ] `drain(timeout)` — stops accepting new events, waits for each per-output queue to empty up to the timeout, logs any events dropped at deadline
-- [ ] `stats()` — returns per-output counters
+- [x] Per-output state: deque, worker task, circuit state (`Closed`/`Open`), stats counters
+- [x] `emit(event)` — synchronous enqueue; respects `on_error = "drop"` (no queue) vs `"queue"` mode; applies overflow policy when at capacity
+- [x] Worker task — dequeues events, calls `output.send()`, handles all `SendStatus` values including `TRANSIENT` retry with exponential backoff
+- [x] Queue overflow policies: `drop_oldest`, `drop_newest`, `circuit_break`
+- [x] Circuit breaker — trips on `circuit_break` overflow; re-tests via heartbeat after cooldown; recovers to Closed on success
+- [x] Heartbeat task — periodic asyncio task; probes each output; drives circuit recovery
+- [x] `drain(timeout)` — stops accepting new events, waits for each per-output queue to empty up to the timeout, logs any events dropped at deadline
+- [x] `stats()` — returns per-output counters
 
 ### Phase 4 — BumpLog output (`_ongwatch/outputs/bumplog.py`)
 

@@ -349,9 +349,9 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 4 — BumpLog output (`_ongwatch/outputs/bumplog.py`)
 
-- [ ] `start()` / `stop()` — open/close file; `-` or `stdout` maps to `sys.stdout`
-- [ ] `send()` — tab-separated format matching current `printsupport()` for cash/sub events; `REJECTED` for unhandled types
-- [ ] `heartbeat()` — appends `# heartbeat <iso-timestamp>\n`
+- [x] `start()` / `stop()` — open/close file; `-` or `stdout` maps to `sys.stdout`
+- [x] `send()` — tab-separated format matching current `printsupport()` for cash/sub events; `REJECTED` for unhandled types
+- [x] `heartbeat()` — appends `# heartbeat <iso-timestamp>\n`
 
 ### Phase 5 — Wire-up
 

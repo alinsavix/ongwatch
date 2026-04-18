@@ -372,8 +372,8 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 7 — MockOutput (`_ongwatch/outputs/testing.py`)
 
-- [ ] `MockOutput` — captures emitted events in a list; `send()` returns configurable status; `heartbeat()` no-op
-- [ ] Verify dispatcher can be instantiated and driven with `MockOutput` in isolation
+- [x] `MockOutput` — captures emitted events in a list; `send()` returns configurable status; `heartbeat()` no-op
+- [x] Verify dispatcher can be instantiated and driven with `MockOutput` in isolation
 
 ### Phase 8 — Console output (`_ongwatch/outputs/console.py`)
 

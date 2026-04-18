@@ -326,9 +326,9 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 1 — Event types (`_ongwatch/events.py`)
 
-- [ ] `OngwatchEvent` base dataclass (`timestamp`, `backend`, `raw`)
-- [ ] Currently-emitted subtypes: `CashSupportEvent`, `SubscriptionEvent`, `GiftSubEvent`, `RaidEvent`, `StreamStateEvent`, `HypeTrainEvent`, `SongRequestEvent`, `RaffleWinEvent`
-- [ ] Defined/reserved subtypes: `FollowEvent`, `ChannelPointRedemptionEvent`, `PollEvent`, `PredictionEvent`, `CharityDonationEvent`, `GoalEvent`, `ShoutoutEvent`
+- [x] `OngwatchEvent` base dataclass (`timestamp`, `backend`, `raw`)
+- [x] Currently-emitted subtypes: `CashSupportEvent`, `SubscriptionEvent`, `GiftSubEvent`, `RaidEvent`, `StreamStateEvent`, `HypeTrainEvent`, `SongRequestEvent`, `RaffleWinEvent`
+- [x] Defined/reserved subtypes: `FollowEvent`, `ChannelPointRedemptionEvent`, `PollEvent`, `PredictionEvent`, `CharityDonationEvent`, `GoalEvent`, `ShoutoutEvent`
 
 ### Phase 2 — Output protocol (`_ongwatch/outputs/__init__.py`)
 

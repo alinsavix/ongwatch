@@ -54,7 +54,7 @@ def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str
     try:
         return config[subsystem][environment]
     except KeyError:
-        logging.error(f"no config found for '{subsystem}.{environment}'")
+        logging.warning(f"no credentials found for '{subsystem}.{environment}'")
         return None
 
 

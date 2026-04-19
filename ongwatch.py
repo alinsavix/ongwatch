@@ -44,6 +44,7 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
 def _load_outputs(
     config: dict[str, Any],
     environment: str,
+    config_file: Path,
 ) -> tuple[list[tuple[str, Any, OutputConfig]], list[Any]]:
     """
     Parse [outputs.*.<environment>] sections from ongwatch.toml, instantiate
@@ -61,6 +62,8 @@ def _load_outputs(
         if not env_cfg.get("enabled", True):
             continue
 
+        logging.info(
+            f"loading config for '{output_name}.{environment}' from {config_file}")
         module = get_output(output_name)
         output = module.create(env_cfg)
 
@@ -96,7 +99,7 @@ async def async_main(args: argparse.Namespace) -> int:
     # ------------------------------------------------------------------
     # Start outputs and build dispatcher
     # ------------------------------------------------------------------
-    output_triples, output_instances = _load_outputs(config, args.environment)
+    output_triples, output_instances = _load_outputs(config, args.environment, args.config_file)
 
     for output in output_instances:
         await output.start()
@@ -141,7 +144,9 @@ async def async_main(args: argparse.Namespace) -> int:
 
     for backend in enabled_backends:
         logging.info(
-            f"loading config for '{backend}.{args.environment}' from {args.credentials_file}")
+            f"loading config for '{backend}.{args.environment}' from {args.config_file}")
+        logging.info(
+            f"loading credentials for '{backend}.{args.environment}' from {args.credentials_file}")
 
         creds = get_credentials(args.credentials_file, backend, args.environment)
         module = backends.get_backend(backend)

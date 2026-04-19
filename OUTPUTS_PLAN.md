@@ -391,7 +391,13 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 10 — MQTT output (`_ongwatch/outputs/mqtt.py`)
 
-> **Blocked** — requires topic hierarchy design doc before implementation. See note in §5c.
+- [x] LWT + presence: registers `{channel}/presence` = "offline" as LWT; publishes "online" on connect; publishes "offline" on clean shutdown
+- [x] `start()` / `stop()` — connect/disconnect; SelectorEventLoop required on Windows (set in ongwatch.py `main()`)
+- [x] `send()` — builds JSON envelope per TOPICS.md; returns `HANDLED`, `REJECTED` (unhandled type), or `TRANSIENT` (connection lost)
+- [x] `heartbeat()` — publishes to `{channel}/heartbeat`; reconnects if disconnected; raises `MqttError` on failure (for circuit recovery)
+- [x] Topic/retain/QoS mapping per TOPICS.md: retained+qos_state for stream/status and hypetrain/status; no-retain+qos_events for all discrete events; QoS 0 for heartbeat
+- [x] `aiomqtt>=2.3.0` added to pyproject.toml; `[outputs.mqtt.production]` and `[outputs.mqtt.test]` added to ongwatch.toml
+- [x] Smoke test: all 8 event types publish HANDLED; unhandled types return REJECTED; disconnected client returns TRANSIENT
 
 ---
 

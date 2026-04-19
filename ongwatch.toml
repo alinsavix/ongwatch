@@ -21,3 +21,31 @@ path = "/var/log/ongwatch.db"
 on_error = "queue"
 queue_max_size = 0   # unbounded — don't lose records
 queue_overflow = "drop_oldest"
+
+[outputs.mqtt.production]
+host            = "mqtt.example.com"
+port            = 1883
+channel         = "jonathanong"
+topic_prefix    = ""
+client_id       = ""
+username        = ""
+password        = ""
+tls             = false
+qos_events      = 1
+qos_state       = 1
+qos_heartbeat   = 0
+on_error        = "queue"
+queue_max_size  = 500
+queue_overflow  = "circuit_break"
+circuit_break_cooldown = 300
+circuit_break_flush_queue = true
+max_retries     = 5
+
+[outputs.mqtt.test]
+host            = "localhost"
+port            = 1883
+channel         = "jonathanong"
+on_error        = "queue"
+queue_max_size  = 500
+queue_overflow  = "circuit_break"
+circuit_break_cooldown = 300

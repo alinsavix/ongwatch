@@ -275,6 +275,11 @@ def main() -> int:
     sys.stdout = io.TextIOWrapper(cast(io.TextIOBase, sys.stdout).detach(), encoding="utf-8", line_buffering=True)
     sys.stderr = io.TextIOWrapper(cast(io.TextIOBase, sys.stderr).detach(), encoding="utf-8", line_buffering=True)
 
+    # paho-mqtt (used by aiomqtt) requires add_reader/add_writer, which are
+    # only available on SelectorEventLoop — not the Windows default ProactorEventLoop.
+    if platform.system() == "Windows":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     args = parse_args()
 
     logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"

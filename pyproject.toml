@@ -26,6 +26,7 @@ dependencies = [
     "pytz",
     "toml",
     "aiosqlite>=0.22.1",
+    "aiomqtt>=2.3.0",
 ]
 
 

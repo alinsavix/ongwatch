@@ -18,7 +18,7 @@ enabled = true
 enabled = true
 
 [backends.twitch.test]
-enabled = true
+enabled = false
 
 [backends.synthetic.test]
 enabled = true
@@ -29,13 +29,13 @@ enabled = true
 # ---------------------------------------------------------------------------
 
 [outputs.bumplog.production]
-path = "/path/to/bump.log"
+path = "bump.log"
 on_error = "queue"
 queue_max_size = 100
 queue_overflow = "drop_oldest"
 
 [outputs.bumplog.test]
-enabled = true
+enabled = false
 path = "-"
 on_error = "queue"
 queue_max_size = 100
@@ -45,12 +45,14 @@ queue_overflow = "drop_oldest"
 enabled = true
 
 [outputs.sqlite.production]
+enabled = false
 path = "ongwatch.db"
 on_error = "queue"
 queue_max_size = 0   # unbounded — don't lose records
 queue_overflow = "drop_oldest"
 
 [outputs.mqtt.production]
+enabled = false
 host            = "mqtt.example.com"
 port            = 1883
 channel         = "jonathanong"
@@ -70,7 +72,7 @@ circuit_break_flush_queue = true
 max_retries     = 5
 
 [outputs.mqtt.test]
-enabled = true
+enabled = false
 host            = "localhost"
 port            = 1883
 channel         = "jonathanong"

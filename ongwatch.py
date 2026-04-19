@@ -169,6 +169,12 @@ async def async_main(args: argparse.Namespace) -> int:
         # Windows doesn't support loop.add_signal_handler
         signal.signal(signal.SIGINT, lambda signum, frame: handle_interrupt())
         signal.signal(signal.SIGTERM, lambda signum, frame: handle_interrupt())
+        # SelectorEventLoop on Windows never calls signal.set_wakeup_fd(), so
+        # SIGINT won't interrupt select() — the loop can block for up to the
+        # heartbeat interval before noticing Ctrl+C.  Wire up the loop's own
+        # self-pipe as the wakeup fd so signals wake select() immediately.
+        if hasattr(loop, '_csock'):
+            signal.set_wakeup_fd(loop._csock.fileno())
 
     try:
         done, pending = await asyncio.wait(

@@ -58,6 +58,8 @@ def _load_outputs(
         if environment not in env_map:
             continue
         env_cfg: dict[str, Any] = env_map[environment]
+        if not env_cfg.get("enabled", True):
+            continue
 
         module = get_output(output_name)
         output = module.create(env_cfg)
@@ -105,12 +107,32 @@ async def async_main(args: argparse.Namespace) -> int:
     # ------------------------------------------------------------------
     # Start backends
     # ------------------------------------------------------------------
-    if not args.enable_backend or args.enable_backend == ["all"]:
-        enabled_backends = backends.backend_list()
-    else:
+    if args.enable_backend and args.enable_backend != ["all"]:
+        # CLI --enable-backend takes full precedence
         enabled_backends = args.enable_backend
+    else:
+        backends_cfg: dict[str, Any] = config.get("backends", {})
+        if not backends_cfg:
+            logging.error(
+                f"No [backends.*] sections found in {args.config_file}; "
+                "add at least one [backends.<name>.<env>] section"
+            )
+            return 1
+
+        enabled_backends = [
+            name for name, env_map in backends_cfg.items()
+            if args.environment in env_map
+            and env_map[args.environment].get("enabled", True)
+        ]
 
     enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
+
+    if not enabled_backends:
+        logging.error(
+            f"No backends enabled for environment '{args.environment}'; "
+            "check [backends.*] sections in ongwatch.toml"
+        )
+        return 1
 
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {' '.join(enabled_backends)}")

@@ -1,6 +1,33 @@
 [dispatcher]
 heartbeat_interval = 60   # seconds
 
+# ---------------------------------------------------------------------------
+# Backends — [backends.<name>.<environment>]
+# A backend is started if its section exists and enabled != false.
+# At least one backend must be enabled for the active environment, or
+# ongwatch will log an error and exit.
+# ---------------------------------------------------------------------------
+
+[backends.twitch.production]
+enabled = true
+
+[backends.streamelements.production]
+enabled = true
+
+[backends.streamlabs.production]
+enabled = true
+
+[backends.twitch.test]
+enabled = true
+
+[backends.synthetic.test]
+enabled = true
+
+# ---------------------------------------------------------------------------
+# Outputs — [outputs.<name>.<environment>]
+# An output is active if its section exists and enabled != false.
+# ---------------------------------------------------------------------------
+
 [outputs.bumplog.production]
 path = "/path/to/bump.log"
 on_error = "queue"
@@ -8,16 +35,17 @@ queue_max_size = 100
 queue_overflow = "drop_oldest"
 
 [outputs.bumplog.test]
+enabled = true
 path = "-"
 on_error = "queue"
 queue_max_size = 100
 queue_overflow = "drop_oldest"
 
 [outputs.console.test]
-# no output-specific options needed
+enabled = true
 
 [outputs.sqlite.production]
-path = "/var/log/ongwatch.db"
+path = "ongwatch.db"
 on_error = "queue"
 queue_max_size = 0   # unbounded — don't lose records
 queue_overflow = "drop_oldest"
@@ -42,6 +70,7 @@ circuit_break_flush_queue = true
 max_retries     = 5
 
 [outputs.mqtt.test]
+enabled = true
 host            = "localhost"
 port            = 1883
 channel         = "jonathanong"

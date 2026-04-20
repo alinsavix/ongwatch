@@ -45,6 +45,9 @@ def _load_outputs(
     config: dict[str, Any],
     environment: str,
     config_file: Path,
+    enable_output: list[str],
+    disable_output: list[str],
+    debug_output: list[str],
 ) -> tuple[list[tuple[str, Any, OutputConfig]], list[Any]]:
     """
     Parse [outputs.*.<environment>] sections from ongwatch.toml, instantiate
@@ -52,20 +55,33 @@ def _load_outputs(
       - triples suitable for Dispatcher.__init__
       - the raw output instances (for calling stop() at shutdown)
     """
+    outputs_cfg: dict[str, Any] = config.get("outputs", {})
+
+    if enable_output and enable_output != ["all"]:
+        enabled_outputs = enable_output
+    else:
+        enabled_outputs = [
+            name for name, env_map in outputs_cfg.items()
+            if environment in env_map and env_map[environment].get("enabled", True)
+        ]
+    enabled_outputs = [o for o in enabled_outputs if o not in disable_output]
+
     triples: list[tuple[str, Any, OutputConfig]] = []
     instances: list[Any] = []
 
-    for output_name, env_map in config.get("outputs", {}).items():
-        if environment not in env_map:
-            continue
-        env_cfg: dict[str, Any] = env_map[environment]
-        if not env_cfg.get("enabled", True):
-            continue
+    for output_name in enabled_outputs:
+        env_cfg: dict[str, Any] = outputs_cfg.get(output_name, {}).get(environment, {})
 
         logging.info(
             f"loading config for '{output_name}.{environment}' from {config_file}")
         module = get_output(output_name)
         output = module.create(env_cfg)
+
+        logger = logging.getLogger(output_name)
+        if output_name in debug_output or "all" in debug_output:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
 
         output_config = OutputConfig(
             on_error=env_cfg.get("on_error", "queue"),
@@ -99,7 +115,10 @@ async def async_main(args: argparse.Namespace) -> int:
     # ------------------------------------------------------------------
     # Start outputs and build dispatcher
     # ------------------------------------------------------------------
-    output_triples, output_instances = _load_outputs(config, args.environment, args.config_file)
+    output_triples, output_instances = _load_outputs(
+        config, args.environment, args.config_file,
+        args.enable_output, args.disable_output, args.debug_output,
+    )
 
     for output in output_instances:
         await output.start()
@@ -284,6 +303,30 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="disable named backend"
+    )
+
+    parser.add_argument(
+        "--debug-output",
+        type=str,
+        action="append",
+        default=[],
+        help="enable debug logging for named output"
+    )
+
+    parser.add_argument(
+        "--enable-output",
+        type=str,
+        action="append",
+        default=[],
+        help="enable named output"
+    )
+
+    parser.add_argument(
+        "--disable-output",
+        type=str,
+        action="append",
+        default=[],
+        help="disable named output"
     )
 
     parsed_args = parser.parse_args()

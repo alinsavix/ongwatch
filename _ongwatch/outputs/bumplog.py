@@ -143,5 +143,5 @@ class BumpLogOutput:
 
 
 def create(config: dict[str, Any]) -> BumpLogOutput:
-    """Factory called by ongwatch.py when loading outputs from ongwatch.toml."""
+    """Factory called by ongwatch.py when loading outputs from ongwatch.conf."""
     return BumpLogOutput(path=config.get("path", "-"))

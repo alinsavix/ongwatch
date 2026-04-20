@@ -153,7 +153,7 @@ Periodic asyncio task (global `heartbeat_interval`, default 60s). For each outpu
 - **Closed**: call `output.heartbeat()`; on failure, log warning (does not trip circuit by itself — that's queue-driven)
 - **Open**: if `retry_at` has passed, call `output.heartbeat()` as probe; success → transition to Closed and log recovery; failure → reset `retry_at = now + cooldown`, log
 
-### Circuit-break config (per output, in ongwatch.toml)
+### Circuit-break config (per output, in ongwatch.conf)
 
 ```toml
 [outputs.mqtt.production]
@@ -241,7 +241,7 @@ Build in this order; each proves the protocol before the next.
 
 In `async_main()`:
 
-1. Read `[outputs.*]` sections from `ongwatch.toml`, build list of enabled outputs
+1. Read `[outputs.*]` sections from `ongwatch.conf`, build list of enabled outputs
 2. Call `output.start()` for each
 3. Instantiate `Dispatcher(outputs, heartbeat_interval=...)`
 4. Start dispatcher's heartbeat task
@@ -257,12 +257,12 @@ In `async_main()`:
 
 Configuration is split across two files:
 
-- **`credentials.toml`** — secrets only (API keys, tokens, client IDs). Existing structure unchanged.
-- **`ongwatch.toml`** — non-secret runtime configuration: which outputs are enabled, queue/circuit-breaker tuning, dispatcher settings. Safe to commit (no secrets).
+- **`credentials.conf`** — secrets only (API keys, tokens, client IDs). Existing structure unchanged.
+- **`ongwatch.conf`** — non-secret runtime configuration: which outputs are enabled, queue/circuit-breaker tuning, dispatcher settings. Safe to commit (no secrets).
 
-`ongwatch.py` loads both files at startup. `get_credentials()` continues to read from `credentials.toml`; a new `get_config()` helper reads from `ongwatch.toml` using the same `[section.name.environment]` pattern.
+`ongwatch.py` loads both files at startup. `get_credentials()` continues to read from `credentials.conf`; a new `get_config()` helper reads from `ongwatch.conf` using the same `[section.name.environment]` pattern.
 
-Output sections in `ongwatch.toml`:
+Output sections in `ongwatch.conf`:
 
 ```toml
 [dispatcher]
@@ -296,7 +296,7 @@ queue_overflow = "drop_oldest"
 max_retries = 3
 ```
 
-Any output that requires secrets (e.g. an MQTT broker with authentication) keeps those credentials in `credentials.toml` under its own section, separate from the queue/behavior config in `ongwatch.toml`.
+Any output that requires secrets (e.g. an MQTT broker with authentication) keeps those credentials in `credentials.conf` under its own section, separate from the queue/behavior config in `ongwatch.conf`.
 
 ---
 
@@ -316,8 +316,8 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 | `_ongwatch/backends/streamelements.py` | Modified | Same |
 | `_ongwatch/backends/streamlabs.py` | Modified | Same |
 | `ongwatch.py` | Modified | Initialize outputs, create dispatcher, pass to backends |
-| `ongwatch.toml` | New | Non-secret runtime config: outputs, queue tuning, dispatcher settings |
-| `credentials.toml` | Unchanged | Secrets only — no output config added here |
+| `ongwatch.conf` | New | Non-secret runtime config: outputs, queue tuning, dispatcher settings |
+| `credentials.conf` | Unchanged | Secrets only — no output config added here |
 | `_ongwatch/util.py` | Modified | Remove printsupport(), printextra() once unused |
 
 ---
@@ -355,9 +355,9 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 
 ### Phase 5 — Wire-up
 
-- [x] Create `ongwatch.toml` with output and dispatcher config
+- [x] Create `ongwatch.conf` with output and dispatcher config
 - [x] Add `get_config()` helper to `_ongwatch/util.py`
-- [x] `ongwatch.py`: load outputs from `ongwatch.toml`, call `start()`, create dispatcher, start heartbeat task, pass dispatcher to backends, implement shutdown sequence (cancel backends → drain → stop outputs)
+- [x] `ongwatch.py`: load outputs from `ongwatch.conf`, call `start()`, create dispatcher, start heartbeat task, pass dispatcher to backends, implement shutdown sequence (cancel backends → drain → stop outputs)
 - [x] Twitch backend: extract `_map_*` pure functions; replace all `printsupport()` / `out()` / `printextra()` calls with `dispatcher.emit(...)`
 - [x] StreamElements backend: same
 - [x] Streamlabs backend: same
@@ -396,7 +396,7 @@ Any output that requires secrets (e.g. an MQTT broker with authentication) keeps
 - [x] `send()` — builds JSON envelope per TOPICS.md; returns `HANDLED`, `REJECTED` (unhandled type), or `TRANSIENT` (connection lost)
 - [x] `heartbeat()` — publishes to `{channel}/heartbeat`; reconnects if disconnected; raises `MqttError` on failure (for circuit recovery)
 - [x] Topic/retain/QoS mapping per TOPICS.md: retained+qos_state for stream/status and hypetrain/status; no-retain+qos_events for all discrete events; QoS 0 for heartbeat
-- [x] `aiomqtt>=2.3.0` added to pyproject.toml; `[outputs.mqtt.production]` and `[outputs.mqtt.test]` added to ongwatch.toml
+- [x] `aiomqtt>=2.3.0` added to pyproject.toml; `[outputs.mqtt.production]` and `[outputs.mqtt.test]` added to ongwatch.conf
 - [x] Smoke test: all 8 event types publish HANDLED; unhandled types return REJECTED; disconnected client returns TRANSIENT
 
 ---

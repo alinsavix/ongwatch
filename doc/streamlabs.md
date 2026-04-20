@@ -96,7 +96,7 @@ can retrieve this token on the Streamlabs site by going to
 under the "API Tokens" sub-tab, and then clicking "copy" next to the "Your Socket
 API Token" field.
 
-This token should be placed in the Streamlabs section of `credentials.toml` under
+This token should be placed in the Streamlabs section of `credentials.conf` under
 a "socket_token" key.
 
 This token does not expire.

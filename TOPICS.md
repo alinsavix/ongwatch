@@ -165,7 +165,7 @@ Not currently emitted by ongwatch.
 ### `stream/viewers`, `stream/mode`
 Not currently emitted by ongwatch.
 
-## ongwatch.toml configuration
+## ongwatch.conf configuration
 
 ```toml
 [outputs.mqtt.production]

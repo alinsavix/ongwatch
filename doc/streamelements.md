@@ -31,7 +31,7 @@ A tip event from StreamElements looks like:
 
 Use a JWT token from the streamer's account, following the instructions
 [here](https://dev.streamelements.com/docs/api-docs/ae133ffaf8c1a-personal-access-using-jwt-secert-token-to-access-the-api#obtaining-your-token).
-Place the token under a key named `jwt` in the StreamElements section of `credentials.toml`
+Place the token under a key named `jwt` in the StreamElements section of `credentials.conf`
 
 The JWT token expires after an undocumented amount of time, currently in the general range of
 "several months".
@@ -53,7 +53,7 @@ directly to authenticate. The overlay URL will look something like:
 
 ...the API key would be `LpfJp3Szhi9tWevZeCML`.
 
-Place the API key under a key named `apikey` in the StreamElements section of `credentials.toml`.
+Place the API key under a key named `apikey` in the StreamElements section of `credentials.conf`.
 
 This not an officially supported way to authenticate, but several people involved with
 StreamElements have unofficially indicated that there are no plans to change the current

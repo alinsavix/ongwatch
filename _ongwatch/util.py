@@ -59,5 +59,5 @@ def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str
 
 
 def get_config(cfgfile: Path) -> Dict[str, Any]:
-    """Load and return the full ongwatch.toml config as a dict."""
+    """Load and return the full ongwatch.conf config as a dict."""
     return dict(toml.load(cfgfile))

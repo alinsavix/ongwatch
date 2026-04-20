@@ -10,7 +10,7 @@ the URL and approves the connection, the utility will save the resulting tokens
 in a separate file (currently `user_token.json`).
 
 The OAuth client id and secret should be added to the "twitch" section of 
-`credentials.toml`, under the keys "client_id" and "client_secret".
+`credentials.conf`, under the keys "client_id" and "client_secret".
 
 Tokens from the device auth flow do not expire as long as they are used at least
 once every 30 days.

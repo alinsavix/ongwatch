@@ -50,7 +50,7 @@ def _load_outputs(
     debug_output: list[str],
 ) -> tuple[list[tuple[str, Any, OutputConfig]], list[Any]]:
     """
-    Parse [outputs.*.<environment>] sections from ongwatch.toml, instantiate
+    Parse [outputs.*.<environment>] sections from ongwatch.conf, instantiate
     each output, and return two parallel lists:
       - triples suitable for Dispatcher.__init__
       - the raw output instances (for calling stop() at shutdown)
@@ -101,7 +101,7 @@ def _load_outputs(
 
 async def async_main(args: argparse.Namespace) -> int:
     # ------------------------------------------------------------------
-    # Load ongwatch.toml
+    # Load ongwatch.conf
     # ------------------------------------------------------------------
     config: dict[str, Any] = {}
     if args.config_file.exists():
@@ -152,7 +152,7 @@ async def async_main(args: argparse.Namespace) -> int:
     if not enabled_backends:
         logging.error(
             f"No backends enabled for environment '{args.environment}'; "
-            "check [backends.*] sections in ongwatch.toml"
+            "check [backends.*] sections in ongwatch.conf"
         )
         return 1
 
@@ -241,14 +241,14 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         action=CheckFile(must_exist=True),
-        help="file with credentials (credentials.toml)"
+        help="file with credentials (credentials.conf)"
     )
 
     parser.add_argument(
         "--config-file",
         type=Path,
         default=None,
-        help="runtime config file (ongwatch.toml)"
+        help="runtime config file (ongwatch.conf)"
     )
 
     # FIXME: deal with this better -- it's twitch only (for now?)
@@ -332,10 +332,10 @@ def parse_args() -> argparse.Namespace:
     parsed_args = parser.parse_args()
 
     if parsed_args.credentials_file is None:
-        parsed_args.credentials_file = Path(__file__).parent / "credentials.toml"
+        parsed_args.credentials_file = Path(__file__).parent / "credentials.conf"
 
     if parsed_args.config_file is None:
-        parsed_args.config_file = Path(__file__).parent / "ongwatch.toml"
+        parsed_args.config_file = Path(__file__).parent / "ongwatch.conf"
 
     if parsed_args.token_file is None:
         parsed_args.token_file = Path(__file__).parent / f"twitch_user_token.{parsed_args.environment}.json"

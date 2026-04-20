@@ -121,5 +121,5 @@ class ConsoleOutput:
 
 
 def create(config: dict[str, Any]) -> ConsoleOutput:
-    """Factory called by ongwatch.py when loading outputs from ongwatch.toml."""
+    """Factory called by ongwatch.py when loading outputs from ongwatch.conf."""
     return ConsoleOutput()

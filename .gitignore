@@ -1,5 +1,6 @@
 # sekrit stuffs
 credentials.toml
+credentials.conf
 .tio.tokens.json
 gsheets_credentials.json
 user_token*.json

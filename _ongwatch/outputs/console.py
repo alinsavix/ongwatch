@@ -31,7 +31,9 @@ class ConsoleOutput:
     async def stop(self) -> None:
         pass
 
-    def _write(self, line: str) -> None:
+    def _write(self, line: str, is_test: bool = False) -> None:
+        if is_test:
+            line += " [test]"
         self._stream.write(line + "\n")
         self._stream.flush()
 
@@ -48,11 +50,11 @@ class ConsoleOutput:
                 if event.comment:
                     msg += f": {event.comment}"
             else:
-                kind_label = "TIP" if event.kind in ("tip", "tip_test", "donation") else event.kind.upper()
+                kind_label = "TIP" if event.kind in ("tip", "donation") else event.kind.upper()
                 msg = f"[{ts}] {kind_label:<7} {event.username} tipped ${event.amount:.2f}"
                 if event.comment:
                     msg += f": {event.comment}"
-            self._write(msg)
+            self._write(msg, event.is_test)
             return SendStatus.HANDLED
 
         if isinstance(event, SubscriptionEvent):
@@ -62,7 +64,7 @@ class ConsoleOutput:
             msg = f"[{ts}] SUB     {event.username} {action} ({tier}{month_str})"
             if event.message:
                 msg += f": {event.message}"
-            self._write(msg)
+            self._write(msg, event.is_test)
             return SendStatus.HANDLED
 
         if isinstance(event, GiftSubEvent):
@@ -79,38 +81,40 @@ class ConsoleOutput:
                     f"[{ts}] GIFT    {gifter} gifted {len(event.recipients)}"
                     f" {tier} subs: {names}"
                 )
-            self._write(msg)
+            self._write(msg, event.is_test)
             return SendStatus.HANDLED
 
         if isinstance(event, RaidEvent):
             self._write(
                 f"[{ts}] RAID    {event.from_channel} raided"
-                f" with {event.viewer_count} viewers"
+                f" with {event.viewer_count} viewers",
+                event.is_test,
             )
             return SendStatus.HANDLED
 
         if isinstance(event, RaffleWinEvent):
-            self._write(f"[{ts}] RAFFLE  {event.winner} won the raffle")
+            self._write(f"[{ts}] RAFFLE  {event.winner} won the raffle", event.is_test)
             return SendStatus.HANDLED
 
         if isinstance(event, StreamStateEvent):
             label = "ONLINE" if event.state == "online" else "OFFLINE"
-            self._write(f"[{ts}] === {label} ===")
+            self._write(f"[{ts}] === {label} ===", event.is_test)
             return SendStatus.HANDLED
 
         if isinstance(event, HypeTrainEvent):
             if event.kind == "begin":
-                self._write(f"[{ts}] === HYPE TRAIN BEGIN ===")
+                self._write(f"[{ts}] === HYPE TRAIN BEGIN ===", event.is_test)
             else:
                 self._write(
                     f"[{ts}] === HYPE TRAIN END"
-                    f" (level={event.level}, total={event.total}) ==="
+                    f" (level={event.level}, total={event.total}) ===",
+                    event.is_test,
                 )
             return SendStatus.HANDLED
 
         if isinstance(event, SongRequestEvent):
             requester = event.requester or "unknown"
-            self._write(f'[{ts}] SONG REQUEST from {requester}: "{event.title}"')
+            self._write(f'[{ts}] SONG REQUEST from {requester}: "{event.title}"', event.is_test)
             return SendStatus.HANDLED
 
         return SendStatus.REJECTED

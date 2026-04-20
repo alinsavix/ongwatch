@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -143,7 +144,7 @@ async def start(
     logger: logging.Logger,
     dispatcher: Dispatcher,
 ) -> None:
-    fixtures = _fixtures()
+    fixtures = [dataclasses.replace(e, is_test=True) for e in _fixtures()]
 
     logger.info(
         f"Synthetic backend starting; will emit {len(fixtures)} events "

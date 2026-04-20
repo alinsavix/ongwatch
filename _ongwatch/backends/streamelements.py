@@ -25,7 +25,8 @@ def _map_tip_event(event: Dict[str, Any]) -> CashSupportEvent:
         raw=event,
         username=user,
         amount=amount,
-        kind="tip_test" if is_mock else "tip",
+        kind="tip",
+        is_test=is_mock,
     )
 
 

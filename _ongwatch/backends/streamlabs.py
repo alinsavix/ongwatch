@@ -26,7 +26,8 @@ def _map_donation_event(event: Dict[str, Any]) -> CashSupportEvent:
         raw=event,
         username=user,
         amount=amount,
-        kind="tip_test" if is_test else "donation",
+        kind="donation",
+        is_test=is_test,
     )
 
 

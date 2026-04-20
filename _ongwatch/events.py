@@ -8,8 +8,9 @@ from typing import Any
 @dataclass(kw_only=True)
 class OngwatchEvent:
     timestamp: datetime
-    backend: str   # "twitch", "streamelements", "streamlabs"
-    raw: Any       # original backend payload
+    backend: str        # "twitch", "streamelements", "streamlabs"
+    raw: Any            # original backend payload
+    is_test: bool = False
 
 
 # ---------------------------------------------------------------------------

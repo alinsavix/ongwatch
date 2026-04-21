@@ -88,6 +88,7 @@ def _envelope(event: OngwatchEvent, event_type: str, data: dict[str, Any]) -> st
         "v": 1,
         "timestamp": _ts(event.timestamp),
         "backend": event.backend,
+        "is_test": event.is_test,
         "event_type": event_type,
         "data": data,
         "raw": _raw_json(event.raw),

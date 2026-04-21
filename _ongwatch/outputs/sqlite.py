@@ -20,6 +20,7 @@ _SCHEMA: list[str] = [
         id        INTEGER PRIMARY KEY,
         timestamp TEXT    NOT NULL,
         backend   TEXT    NOT NULL,
+        is_test   INTEGER NOT NULL DEFAULT 0,
         username  TEXT    NOT NULL,
         amount    REAL    NOT NULL,
         kind      TEXT    NOT NULL,
@@ -30,6 +31,7 @@ _SCHEMA: list[str] = [
         id        INTEGER PRIMARY KEY,
         timestamp TEXT    NOT NULL,
         backend   TEXT    NOT NULL,
+        is_test   INTEGER NOT NULL DEFAULT 0,
         username  TEXT    NOT NULL,
         tier      INTEGER NOT NULL,
         is_resub  INTEGER NOT NULL,
@@ -41,6 +43,7 @@ _SCHEMA: list[str] = [
         id         INTEGER PRIMARY KEY,
         timestamp  TEXT    NOT NULL,
         backend    TEXT    NOT NULL,
+        is_test    INTEGER NOT NULL DEFAULT 0,
         gifter     TEXT,
         recipients TEXT    NOT NULL,
         tier       INTEGER NOT NULL,
@@ -51,6 +54,7 @@ _SCHEMA: list[str] = [
         id           INTEGER PRIMARY KEY,
         timestamp    TEXT    NOT NULL,
         backend      TEXT    NOT NULL,
+        is_test      INTEGER NOT NULL DEFAULT 0,
         from_channel TEXT    NOT NULL,
         viewer_count INTEGER NOT NULL,
         raw          TEXT
@@ -59,6 +63,7 @@ _SCHEMA: list[str] = [
         id        INTEGER PRIMARY KEY,
         timestamp TEXT    NOT NULL,
         backend   TEXT    NOT NULL,
+        is_test   INTEGER NOT NULL DEFAULT 0,
         state     TEXT    NOT NULL,
         raw       TEXT
     )""",
@@ -66,6 +71,7 @@ _SCHEMA: list[str] = [
         id        INTEGER PRIMARY KEY,
         timestamp TEXT    NOT NULL,
         backend   TEXT    NOT NULL,
+        is_test   INTEGER NOT NULL DEFAULT 0,
         kind      TEXT    NOT NULL,
         level     INTEGER NOT NULL,
         total     INTEGER NOT NULL,
@@ -75,6 +81,7 @@ _SCHEMA: list[str] = [
         id        INTEGER PRIMARY KEY,
         timestamp TEXT    NOT NULL,
         backend   TEXT    NOT NULL,
+        is_test   INTEGER NOT NULL DEFAULT 0,
         title     TEXT    NOT NULL,
         requester TEXT,
         raw       TEXT
@@ -83,6 +90,7 @@ _SCHEMA: list[str] = [
         id        INTEGER PRIMARY KEY,
         timestamp TEXT    NOT NULL,
         backend   TEXT    NOT NULL,
+        is_test   INTEGER NOT NULL DEFAULT 0,
         winner    TEXT    NOT NULL,
         raw       TEXT
     )""",
@@ -91,6 +99,18 @@ _SCHEMA: list[str] = [
         id INTEGER PRIMARY KEY DEFAULT 1,
         ts TEXT NOT NULL
     )""",
+]
+
+# Migrations for existing databases that predate the is_test column.
+_MIGRATIONS: list[str] = [
+    "ALTER TABLE cash_support  ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE subscription   ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE gift_sub       ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE raid           ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE stream_state   ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE hype_train     ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE song_request   ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE raffle_win     ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
 ]
 
 
@@ -128,6 +148,11 @@ class SQLiteOutput:
         await self._db.execute("PRAGMA journal_mode=WAL")
         for stmt in _SCHEMA:
             await self._db.execute(stmt)
+        for stmt in _MIGRATIONS:
+            try:
+                await self._db.execute(stmt)
+            except aiosqlite.OperationalError:
+                pass  # column already exists
         await self._db.commit()
 
     async def stop(self) -> None:
@@ -151,9 +176,9 @@ class SQLiteOutput:
         if isinstance(event, CashSupportEvent):
             await self._db.execute(
                 "INSERT INTO cash_support"
-                " (timestamp, backend, username, amount, kind, comment, raw)"
-                " VALUES (?,?,?,?,?,?,?)",
-                (ts, event.backend, event.username, event.amount,
+                " (timestamp, backend, is_test, username, amount, kind, comment, raw)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.username, event.amount,
                  event.kind, event.comment, raw),
             )
             await self._db.commit()
@@ -162,9 +187,9 @@ class SQLiteOutput:
         if isinstance(event, SubscriptionEvent):
             await self._db.execute(
                 "INSERT INTO subscription"
-                " (timestamp, backend, username, tier, is_resub, months, message, raw)"
-                " VALUES (?,?,?,?,?,?,?,?)",
-                (ts, event.backend, event.username, event.tier,
+                " (timestamp, backend, is_test, username, tier, is_resub, months, message, raw)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.username, event.tier,
                  int(event.is_resub), event.months, event.message, raw),
             )
             await self._db.commit()
@@ -173,9 +198,9 @@ class SQLiteOutput:
         if isinstance(event, GiftSubEvent):
             await self._db.execute(
                 "INSERT INTO gift_sub"
-                " (timestamp, backend, gifter, recipients, tier, count, raw)"
-                " VALUES (?,?,?,?,?,?,?)",
-                (ts, event.backend, event.gifter,
+                " (timestamp, backend, is_test, gifter, recipients, tier, count, raw)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.gifter,
                  json.dumps(event.recipients), event.tier, event.count, raw),
             )
             await self._db.commit()
@@ -184,18 +209,18 @@ class SQLiteOutput:
         if isinstance(event, RaidEvent):
             await self._db.execute(
                 "INSERT INTO raid"
-                " (timestamp, backend, from_channel, viewer_count, raw)"
-                " VALUES (?,?,?,?,?)",
-                (ts, event.backend, event.from_channel, event.viewer_count, raw),
+                " (timestamp, backend, is_test, from_channel, viewer_count, raw)"
+                " VALUES (?,?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.from_channel, event.viewer_count, raw),
             )
             await self._db.commit()
             return SendStatus.HANDLED
 
         if isinstance(event, StreamStateEvent):
             await self._db.execute(
-                "INSERT INTO stream_state (timestamp, backend, state, raw)"
-                " VALUES (?,?,?,?)",
-                (ts, event.backend, event.state, raw),
+                "INSERT INTO stream_state (timestamp, backend, is_test, state, raw)"
+                " VALUES (?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.state, raw),
             )
             await self._db.commit()
             return SendStatus.HANDLED
@@ -203,9 +228,9 @@ class SQLiteOutput:
         if isinstance(event, HypeTrainEvent):
             await self._db.execute(
                 "INSERT INTO hype_train"
-                " (timestamp, backend, kind, level, total, raw)"
-                " VALUES (?,?,?,?,?,?)",
-                (ts, event.backend, event.kind, event.level, event.total, raw),
+                " (timestamp, backend, is_test, kind, level, total, raw)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.kind, event.level, event.total, raw),
             )
             await self._db.commit()
             return SendStatus.HANDLED
@@ -213,18 +238,18 @@ class SQLiteOutput:
         if isinstance(event, SongRequestEvent):
             await self._db.execute(
                 "INSERT INTO song_request"
-                " (timestamp, backend, title, requester, raw)"
-                " VALUES (?,?,?,?,?)",
-                (ts, event.backend, event.title, event.requester, raw),
+                " (timestamp, backend, is_test, title, requester, raw)"
+                " VALUES (?,?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.title, event.requester, raw),
             )
             await self._db.commit()
             return SendStatus.HANDLED
 
         if isinstance(event, RaffleWinEvent):
             await self._db.execute(
-                "INSERT INTO raffle_win (timestamp, backend, winner, raw)"
-                " VALUES (?,?,?,?)",
-                (ts, event.backend, event.winner, raw),
+                "INSERT INTO raffle_win (timestamp, backend, is_test, winner, raw)"
+                " VALUES (?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.winner, raw),
             )
             await self._db.commit()
             return SendStatus.HANDLED

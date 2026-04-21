@@ -64,6 +64,9 @@ class BumpLogOutput:
     async def send(self, event: OngwatchEvent) -> SendStatus:
         assert self._file is not None
 
+        if event.is_test:
+            return SendStatus.REJECTED
+
         if isinstance(event, CashSupportEvent):
             kind_to_type = {"bits": "Bits", "tip": "Tip", "donation": "Tip"}
             support_type = kind_to_type.get(event.kind, event.kind.capitalize())

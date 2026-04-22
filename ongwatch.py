@@ -6,6 +6,8 @@ import logging
 import platform
 import signal
 import sys
+import time
+from collections import deque
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,6 +20,73 @@ from _ongwatch.util import get_credentials
 import toml
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
+
+# ---------------------------------------------------------------------------
+# Backend supervisor settings
+# ---------------------------------------------------------------------------
+
+# Sliding window for counting restarts.  If a backend fails _BACKEND_RESTART_MAX
+# times within _BACKEND_RESTART_WINDOW seconds it is marked permanently failed.
+_BACKEND_RESTART_WINDOW: float = 300.0   # seconds
+_BACKEND_RESTART_MAX:    int   = 5       # restarts within the window
+_BACKEND_BACKOFF_BASE:   float = 1.0     # initial backoff in seconds
+_BACKEND_BACKOFF_MAX:    float = 60.0    # maximum backoff in seconds
+
+
+async def _supervised_backend(
+    name: str,
+    startfunc: BackendStartHandler,
+    args: argparse.Namespace,
+    creds: dict[str, str] | None,
+    logger: logging.Logger,
+    dispatcher: Dispatcher,
+) -> None:
+    """
+    Run a backend and automatically restart it on failure, with exponential
+    backoff and a sliding-window restart budget.
+
+    Returns normally when the restart budget is exhausted (permanent failure).
+    Propagates CancelledError transparently so the main loop can cancel it on
+    shutdown.
+    """
+    restart_times: deque[float] = deque()
+
+    while True:
+        try:
+            await startfunc(args, creds, logger, dispatcher)
+            # A clean return is unexpected for long-running backends.
+            logger.warning("Backend '%s' exited cleanly; scheduling restart", name)
+        except asyncio.CancelledError:
+            raise   # propagate shutdown — do not restart
+        except Exception:
+            logger.error("Backend '%s' failed with unhandled exception", name, exc_info=True)
+
+        # Prune timestamps that have aged out of the window.
+        now = time.monotonic()
+        cutoff = now - _BACKEND_RESTART_WINDOW
+        while restart_times and restart_times[0] < cutoff:
+            restart_times.popleft()
+
+        if len(restart_times) >= _BACKEND_RESTART_MAX:
+            logger.error(
+                "Backend '%s' has failed %d times in %.0fs; "
+                "marking it permanently failed",
+                name, _BACKEND_RESTART_MAX, _BACKEND_RESTART_WINDOW,
+            )
+            return  # the main loop will notice and eventually shut down
+
+        attempt = len(restart_times) + 1
+        backoff = min(_BACKEND_BACKOFF_BASE * (2 ** len(restart_times)), _BACKEND_BACKOFF_MAX)
+        restart_times.append(now)
+
+        logger.warning(
+            "Restarting backend '%s' (attempt %d of %d) in %.1fs",
+            name, attempt, _BACKEND_RESTART_MAX, backoff,
+        )
+        try:
+            await asyncio.sleep(backoff)
+        except asyncio.CancelledError:
+            raise   # shutdown during backoff — propagate
 
 
 async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.Logger) -> int:
@@ -159,7 +228,7 @@ async def async_main(args: argparse.Namespace) -> int:
     logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {' '.join(enabled_backends)}")
 
-    tasks: list[asyncio.Task[None]] = []
+    supervised_tasks: list[asyncio.Task[None]] = []
 
     for backend in enabled_backends:
         logging.info(
@@ -176,7 +245,12 @@ async def async_main(args: argparse.Namespace) -> int:
             logger.setLevel(logging.INFO)
 
         startfunc: BackendStartHandler = module.start
-        tasks.append(asyncio.create_task(startfunc(args, creds, logger, dispatcher)))
+        supervised_tasks.append(
+            asyncio.create_task(
+                _supervised_backend(backend, startfunc, args, creds, logger, dispatcher),
+                name=f"supervisor:{backend}",
+            )
+        )
 
     shutdown_event = asyncio.Event()
     shutdown_task = asyncio.create_task(shutdown_event.wait())
@@ -201,23 +275,31 @@ async def async_main(args: argparse.Namespace) -> int:
             signal.set_wakeup_fd(loop._csock.fileno())
 
     try:
-        done, pending = await asyncio.wait(
-            [shutdown_task, *tasks],
-            return_when=asyncio.FIRST_COMPLETED
-        )
-        for task in done:
-            if task is not shutdown_task and not task.cancelled():
-                if exc := task.exception():
-                    logging.error("Backend task failed", exc_info=exc)
+        # Supervisor tasks return normally only on permanent failure; they
+        # propagate CancelledError on shutdown.  Keep looping until a shutdown
+        # signal arrives or every backend has permanently failed.
+        alive = list(supervised_tasks)
+        while alive:
+            done, _ = await asyncio.wait(
+                [shutdown_task, *alive],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if shutdown_task in done:
+                break
+            alive = [t for t in alive if not t.done()]
+            if not alive:
+                logging.error(
+                    "All backends have permanently failed; initiating shutdown"
+                )
     finally:
         logging.info("Shutting down...")
 
         # 1. Stop backends — no new events after this point
         shutdown_task.cancel()
-        for task in tasks:
+        for task in supervised_tasks:
             if not task.done():
                 task.cancel()
-        await asyncio.gather(shutdown_task, *tasks, return_exceptions=True)
+        await asyncio.gather(shutdown_task, *supervised_tasks, return_exceptions=True)
 
         # 2. Drain queues (up to 30 s)
         await dispatcher.drain(timeout=30)

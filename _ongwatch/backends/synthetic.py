@@ -63,9 +63,10 @@ def _fixtures() -> list[OngwatchEvent]:
             gifter="test_gifter", recipients=["recipient_a", "recipient_b"],
             tier=1, count=2,
         ),
+        # FIXME: Reconsider how we handle anonymous gifters
         GiftSubEvent(
             timestamp=now, backend="synthetic", raw=None,
-            gifter=None, recipients=["anon_recipient"], tier=1, count=1,
+            gifter="AnAnonymousGifter", is_anonymous=True, recipients=["anon_recipient"], tier=1, count=1,
         ),
         RaidEvent(
             timestamp=now, backend="synthetic", raw=None,

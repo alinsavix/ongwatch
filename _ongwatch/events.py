@@ -40,6 +40,7 @@ class GiftSubEvent(OngwatchEvent):
     tier: int
     count: int
     gifter: str | None = None   # None = anonymous
+    is_anonymous: bool = False
 
 
 @dataclass(kw_only=True)

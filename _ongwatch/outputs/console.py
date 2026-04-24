@@ -69,7 +69,7 @@ class ConsoleOutput:
 
         if isinstance(event, GiftSubEvent):
             tier = _TIER_NAMES.get(event.tier, f"Tier {event.tier}")
-            gifter = event.gifter or "An anonymous gifter"
+            gifter = event.gifter
             if len(event.recipients) == 1:
                 msg = (
                     f"[{ts}] GIFT    {gifter} gifted {event.recipients[0]}"

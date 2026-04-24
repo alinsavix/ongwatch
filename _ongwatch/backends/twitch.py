@@ -53,11 +53,13 @@ def _map_chat_notification(
 
     if payload.sub_gift is not None:
         tier = int(payload.sub_gift.tier) // 1000
+        # FIXME: Reconsider how we handle anonymous gifters
         return GiftSubEvent(
             timestamp=ts,
             backend="twitch",
             raw=payload,
-            gifter=None if payload.anonymous else chatter,
+            gifter="AnAnonymousGifter" if payload.anonymous else chatter,
+            is_anonymous=payload.anonymous,
             recipients=[payload.sub_gift.recipient.display_name],
             tier=tier,
             count=1,

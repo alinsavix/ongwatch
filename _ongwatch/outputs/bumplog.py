@@ -92,7 +92,7 @@ class BumpLogOutput:
             return SendStatus.HANDLED
 
         if isinstance(event, GiftSubEvent):
-            gifter = event.gifter or "AnAnonymousGifter"
+            gifter = event.gifter
             amount = _TIER_VALUES.get(event.tier, 5.00)
             for recipient in event.recipients:
                 self._write(_support_line(

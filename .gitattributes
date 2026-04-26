@@ -44,6 +44,7 @@
 
 # Random development bits
 Dockerfile          text
+uv.lock             text
 *.lock              text -diff
 package.json        text eol=lf
 package-lock.json   text eol=lf -diff

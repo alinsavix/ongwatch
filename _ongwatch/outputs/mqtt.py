@@ -7,8 +7,9 @@ from typing import Any
 import aiomqtt
 
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
-                      OngwatchEvent, RaffleWinEvent, RaidEvent,
-                      SongRequestEvent, StreamStateEvent, SubscriptionEvent)
+                      OngwatchEvent, RaffleWinEvent, RaidIncomingEvent,
+                      RaidOutgoingEvent, SongRequestEvent, StreamStateEvent,
+                      SubscriptionEvent)
 from . import SendStatus
 
 # ---------------------------------------------------------------------------
@@ -17,6 +18,7 @@ from . import SendStatus
 #   {channel}/support/sub       — subscriptions      (no retain, qos_events)
 #   {channel}/support/giftsub   — gift subs          (no retain, qos_events)
 #   {channel}/raid/incoming     — incoming raid       (no retain, qos_events)
+#   {channel}/raid/outgoing     — outgoing raid       (no retain, qos_events)
 #   {channel}/stream/status     — stream state        (retained,  qos_state)
 #   {channel}/hypetrain/status  — hype train          (retained,  qos_state)
 #   {channel}/songqueue/request — song request        (no retain, qos_events)
@@ -27,14 +29,15 @@ from . import SendStatus
 
 # (topic_suffix, event_type, retain, use_state_qos)
 _EVENT_MAP: dict[type[OngwatchEvent], tuple[str, str, bool, bool]] = {
-    CashSupportEvent:  ("support/direct",    "cash_support",  False, False),
-    SubscriptionEvent: ("support/sub",        "subscription",  False, False),
-    GiftSubEvent:      ("support/giftsub",    "gift_sub",      False, False),
-    RaidEvent:         ("raid/incoming",      "raid_incoming", False, False),
-    StreamStateEvent:  ("stream/status",      "stream_status", True,  True),
-    HypeTrainEvent:    ("hypetrain/status",   "hype_train",    True,  True),
-    SongRequestEvent:  ("songqueue/request",  "song_request",  False, False),
-    RaffleWinEvent:    ("raffle/win",         "raffle_win",    False, False),
+    CashSupportEvent:  ("support/direct",    "CashSupport",   False, False),
+    SubscriptionEvent: ("support/sub",        "Subscription",  False, False),
+    GiftSubEvent:      ("support/giftsub",    "GiftSub",       False, False),
+    RaidIncomingEvent: ("raid/incoming",      "RaidIncoming",  False, False),
+    RaidOutgoingEvent: ("raid/outgoing",      "RaidOutgoing",  False, False),
+    StreamStateEvent:  ("stream/status",      "StreamStatus",  True,  True),
+    HypeTrainEvent:    ("hypetrain/status",   "HypeTrain",     True,  True),
+    SongRequestEvent:  ("songqueue/request",  "SongRequest",   False, False),
+    RaffleWinEvent:    ("raffle/win",         "RaffleWin",     False, False),
 }
 
 
@@ -70,8 +73,10 @@ def _build_data(event: OngwatchEvent) -> dict[str, Any]:
     if isinstance(event, GiftSubEvent):
         return {"gifter": event.gifter, "recipients": event.recipients,
                 "tier": event.tier, "count": event.count}
-    if isinstance(event, RaidEvent):
+    if isinstance(event, RaidIncomingEvent):
         return {"from_channel": event.from_channel, "viewer_count": event.viewer_count}
+    if isinstance(event, RaidOutgoingEvent):
+        return {"to_channel": event.to_channel, "viewer_count": event.viewer_count}
     if isinstance(event, StreamStateEvent):
         return {"state": event.state}
     if isinstance(event, HypeTrainEvent):

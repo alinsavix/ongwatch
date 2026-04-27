@@ -44,8 +44,14 @@ class GiftSubEvent(OngwatchEvent):
 
 
 @dataclass(kw_only=True)
-class RaidEvent(OngwatchEvent):
+class RaidIncomingEvent(OngwatchEvent):
     from_channel: str
+    viewer_count: int
+
+
+@dataclass(kw_only=True)
+class RaidOutgoingEvent(OngwatchEvent):
+    to_channel: str
     viewer_count: int
 
 

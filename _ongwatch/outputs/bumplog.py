@@ -7,8 +7,9 @@ from typing import IO, Any
 import pytz
 
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
-                      OngwatchEvent, RaffleWinEvent, RaidEvent,
-                      SongRequestEvent, StreamStateEvent, SubscriptionEvent)
+                      OngwatchEvent, RaffleWinEvent, RaidIncomingEvent,
+                      RaidOutgoingEvent, SongRequestEvent, StreamStateEvent,
+                      SubscriptionEvent)
 from . import SendStatus
 
 _EASTERN = pytz.timezone("US/Eastern")
@@ -104,11 +105,19 @@ class BumpLogOutput:
                 ))
             return SendStatus.HANDLED
 
-        if isinstance(event, RaidEvent):
+        if isinstance(event, RaidIncomingEvent):
             self._write(_support_line(
                 event.timestamp,
                 supporter=event.from_channel,
                 support_type=f"Raid - {event.viewer_count}",
+            ))
+            return SendStatus.HANDLED
+
+        if isinstance(event, RaidOutgoingEvent):
+            self._write(_support_line(
+                event.timestamp,
+                supporter=event.to_channel,
+                support_type=f"Raid Out - {event.viewer_count}",
             ))
             return SendStatus.HANDLED
 

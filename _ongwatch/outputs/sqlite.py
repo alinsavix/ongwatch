@@ -7,7 +7,7 @@ from typing import Any
 import aiosqlite
 
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
-                      OngwatchEvent, RaffleWinEvent, RaidEvent,
+                      OngwatchEvent, RaffleWinEvent, RaidIncomingEvent,
                       SongRequestEvent, StreamStateEvent, SubscriptionEvent)
 from . import SendStatus
 
@@ -206,7 +206,7 @@ class SQLiteOutput:
             await self._db.commit()
             return SendStatus.HANDLED
 
-        if isinstance(event, RaidEvent):
+        if isinstance(event, RaidIncomingEvent):
             await self._db.execute(
                 "INSERT INTO raid"
                 " (timestamp, backend, is_test, from_channel, viewer_count, raw)"

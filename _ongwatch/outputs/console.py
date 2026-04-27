@@ -7,8 +7,9 @@ from typing import IO, Any
 import pytz
 
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
-                      OngwatchEvent, RaffleWinEvent, RaidEvent,
-                      SongRequestEvent, StreamStateEvent, SubscriptionEvent)
+                      OngwatchEvent, RaffleWinEvent, RaidIncomingEvent,
+                      RaidOutgoingEvent, SongRequestEvent, StreamStateEvent,
+                      SubscriptionEvent)
 from . import SendStatus
 
 _EASTERN = pytz.timezone("US/Eastern")
@@ -84,9 +85,17 @@ class ConsoleOutput:
             self._write(msg, event.is_test)
             return SendStatus.HANDLED
 
-        if isinstance(event, RaidEvent):
+        if isinstance(event, RaidIncomingEvent):
             self._write(
-                f"[{ts}] RAID    {event.from_channel} raided"
+                f"[{ts}] RAID IN {event.from_channel} raided"
+                f" with {event.viewer_count} viewers",
+                event.is_test,
+            )
+            return SendStatus.HANDLED
+
+        if isinstance(event, RaidOutgoingEvent):
+            self._write(
+                f"[{ts}] RAID OUT raided {event.to_channel}"
                 f" with {event.viewer_count} viewers",
                 event.is_test,
             )

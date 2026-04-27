@@ -15,9 +15,9 @@ from ..dispatcher import Dispatcher
 from ..events import (CashSupportEvent, ChannelPointRedemptionEvent,
                       CharityDonationEvent, FollowEvent, GiftSubEvent,
                       GoalEvent, HypeTrainEvent, OngwatchEvent, PollEvent,
-                      PredictionEvent, RaffleWinEvent, RaidEvent,
-                      ShoutoutEvent, SongRequestEvent, StreamStateEvent,
-                      SubscriptionEvent)
+                      PredictionEvent, RaffleWinEvent, RaidIncomingEvent,
+                      RaidOutgoingEvent, ShoutoutEvent, SongRequestEvent,
+                      StreamStateEvent, SubscriptionEvent)
 
 # Seconds to wait after start() is called before the first event is emitted.
 # Gives outputs time to fully connect before the burst arrives.
@@ -68,9 +68,13 @@ def _fixtures() -> list[OngwatchEvent]:
             timestamp=now, backend="synthetic", raw=None,
             gifter="AnAnonymousGifter", is_anonymous=True, recipients=["anon_recipient"], tier=1, count=1,
         ),
-        RaidEvent(
+        RaidIncomingEvent(
             timestamp=now, backend="synthetic", raw=None,
             from_channel="test_raider", viewer_count=42,
+        ),
+        RaidOutgoingEvent(
+            timestamp=now, backend="synthetic", raw=None,
+            to_channel="test_raidee", viewer_count=37,
         ),
         HypeTrainEvent(
             timestamp=now, backend="synthetic", raw=None,

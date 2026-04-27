@@ -14,8 +14,8 @@ from twitchio.models.eventsub_ import (ChannelBitsUse, ChannelRaid,
 
 from ..dispatcher import Dispatcher
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
-                      RaffleWinEvent, RaidEvent, SongRequestEvent,
-                      StreamStateEvent, SubscriptionEvent)
+                      RaffleWinEvent, RaidIncomingEvent, RaidOutgoingEvent,
+                      SongRequestEvent, StreamStateEvent, SubscriptionEvent)
 from ..util import get_token
 
 # Best I can tell, this info is simply not available from the API,
@@ -33,7 +33,11 @@ AUTOMATIC_REWARD_COSTS = {
 # ---------------------------------------------------------------------------
 
 def _map_bits_event(payload: ChannelBitsUse) -> CashSupportEvent:
-    username = payload.user.display_name if payload.user else "Unknown"
+    if payload.user and payload.user.display_name:
+        username = payload.user.display_name
+    else:
+        username = "Unknown"
+
     return CashSupportEvent(
         timestamp=datetime.now(tz=timezone.utc),
         backend="twitch",
@@ -51,7 +55,12 @@ def _map_chat_notification(
 
     ts = datetime.now(tz=timezone.utc)
 
+    # FIXME: recipients is an array, but we only ever put one recipient in it?
     if payload.sub_gift is not None:
+        if payload.sub_gift.recipient and payload.sub_gift.recipient.display_name:
+            recipient = payload.sub_gift.recipient.display_name
+        else:
+            recipient = "Unknown"
         tier = int(payload.sub_gift.tier) // 1000
         # FIXME: Reconsider how we handle anonymous gifters
         return GiftSubEvent(
@@ -60,7 +69,7 @@ def _map_chat_notification(
             raw=payload,
             gifter="AnAnonymousGifter" if payload.anonymous else chatter,
             is_anonymous=payload.anonymous,
-            recipients=[payload.sub_gift.recipient.display_name],
+            recipients=[recipient],
             tier=tier,
             count=1,
         )
@@ -93,12 +102,22 @@ def _map_chat_notification(
     return None
 
 
-def _map_raid_event(payload: ChannelRaid) -> RaidEvent:
-    return RaidEvent(
+def _map_raid_incoming(payload: ChannelRaid) -> RaidIncomingEvent:
+    return RaidIncomingEvent(
         timestamp=datetime.now(tz=timezone.utc),
         backend="twitch",
         raw=payload,
         from_channel=payload.from_broadcaster.display_name,
+        viewer_count=payload.viewer_count,
+    )
+
+
+def _map_raid_outgoing(payload: ChannelRaid) -> RaidOutgoingEvent:
+    return RaidOutgoingEvent(
+        timestamp=datetime.now(tz=timezone.utc),
+        backend="twitch",
+        raw=payload,
+        to_channel=payload.to_broadcaster.display_name,
         viewer_count=payload.viewer_count,
     )
 
@@ -332,13 +351,17 @@ class OngWatch_Twitch(Client):
     async def event_raid(self, payload: ChannelRaid) -> None:
         self.logger.debug("Raid received")
         if payload.from_broadcaster.id == self.token_user_id:
-            return
-
-        self.logger.info(
-            f"Raid from {payload.from_broadcaster.display_name}"
-            f" with {payload.viewer_count} viewers"
-        )
-        self.dispatcher.emit(_map_raid_event(payload))
+            self.logger.info(
+                f"Raid out to {payload.to_broadcaster.display_name}"
+                f" with {payload.viewer_count} viewers"
+            )
+            self.dispatcher.emit(_map_raid_outgoing(payload))
+        else:
+            self.logger.info(
+                f"Raid from {payload.from_broadcaster.display_name}"
+                f" with {payload.viewer_count} viewers"
+            )
+            self.dispatcher.emit(_map_raid_incoming(payload))
 
 
 async def start(

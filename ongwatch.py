@@ -124,14 +124,14 @@ def _load_outputs(
       - triples suitable for Dispatcher.__init__
       - the raw output instances (for calling stop() at shutdown)
     """
-    outputs_cfg: dict[str, Any] = config.get("outputs", {})
+    outputs_cfg: dict[str, Any] = config.get(environment, {}).get("outputs", {})
 
     if enable_output and enable_output != ["all"]:
         enabled_outputs = enable_output
     else:
         enabled_outputs = [
-            name for name, env_map in outputs_cfg.items()
-            if environment in env_map and env_map[environment].get("enabled", True)
+            name for name, cfg in outputs_cfg.items()
+            if cfg.get("enabled", True)
         ]
     enabled_outputs = [o for o in enabled_outputs if o not in disable_output]
 
@@ -139,12 +139,16 @@ def _load_outputs(
     instances: list[Any] = []
 
     for output_name in enabled_outputs:
-        env_cfg: dict[str, Any] = outputs_cfg.get(output_name, {}).get(environment, {})
+        env_cfg: dict[str, Any] = outputs_cfg.get(output_name, {})
 
         logging.info(
-            f"loading config for '{output_name}.{environment}' from {config_file}")
-        module = get_output(output_name)
-        output = module.create(env_cfg)
+            f"loading config for '{environment}.{output_name}' from {config_file}")
+        try:
+            module = get_output(output_name)
+            output = module.create(env_cfg)
+        except Exception:
+            logging.exception(f"failed to load output '{output_name}'; skipping")
+            continue
 
         logger = logging.getLogger(output_name)
         if output_name in debug_output or "all" in debug_output:
@@ -202,18 +206,17 @@ async def async_main(args: argparse.Namespace) -> int:
         # CLI --enable-backend takes full precedence
         enabled_backends = args.enable_backend
     else:
-        backends_cfg: dict[str, Any] = config.get("backends", {})
+        backends_cfg: dict[str, Any] = config.get(args.environment, {}).get("backends", {})
         if not backends_cfg:
             logging.error(
-                f"No [backends.*] sections found in {args.config_file}; "
-                "add at least one [backends.<name>.<env>] section"
+                f"No [{args.environment}.backends.*] sections found in {args.config_file}; "
+                f"add at least one [{args.environment}.backends.<name>] section"
             )
             return 1
 
         enabled_backends = [
-            name for name, env_map in backends_cfg.items()
-            if args.environment in env_map
-            and env_map[args.environment].get("enabled", True)
+            name for name, cfg in backends_cfg.items()
+            if cfg.get("enabled", True)
         ]
 
     enabled_backends = [b for b in enabled_backends if b not in args.disable_backend]
@@ -232,9 +235,9 @@ async def async_main(args: argparse.Namespace) -> int:
 
     for backend in enabled_backends:
         logging.info(
-            f"loading config for '{backend}.{args.environment}' from {args.config_file}")
+            f"loading config for '{args.environment}.{backend}' from {args.config_file}")
         logging.info(
-            f"loading credentials for '{backend}.{args.environment}' from {args.credentials_file}")
+            f"loading credentials for '{args.environment}.{backend}' from {args.credentials_file}")
 
         creds = get_credentials(args.credentials_file, backend, args.environment)
         module = backends.get_backend(backend)

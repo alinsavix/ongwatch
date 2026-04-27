@@ -52,9 +52,9 @@ def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str
     config = toml.load(cfgfile)
 
     try:
-        return config[subsystem][environment]
+        return config[environment][subsystem]
     except KeyError:
-        logging.warning(f"no credentials found for '{subsystem}.{environment}'")
+        logging.warning(f"no credentials found for '{environment}.{subsystem}'")
         return None
 
 

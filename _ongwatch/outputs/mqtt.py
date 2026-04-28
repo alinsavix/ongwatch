@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 import aiomqtt
+
+log = logging.getLogger(__name__)
 
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
                       OngwatchEvent, RaffleWinEvent, RaidIncomingEvent,
@@ -141,7 +144,15 @@ class MQTTOutput:
 
     async def _connect(self) -> None:
         client = self._make_client()
-        await client.__aenter__()
+        try:
+            await client.__aenter__()
+        except aiomqtt.MqttError:
+            # Ensure paho's network thread is stopped even on connection failure.
+            try:
+                await client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            raise
         self._client = client
         await client.publish(self._topic("presence"), "online", qos=1, retain=True)
 
@@ -162,7 +173,11 @@ class MQTTOutput:
             pass
 
     async def start(self) -> None:
-        await self._connect()
+        try:
+            await self._connect()
+        except aiomqtt.MqttError as exc:
+            log.warning("MQTT: could not connect to %s:%d — %s (will retry on heartbeat)",
+                        self._host, self._port, exc)
 
     async def stop(self) -> None:
         await self._disconnect(publish_offline=True)

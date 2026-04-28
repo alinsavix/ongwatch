@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import io
 import logging
+import os
 import platform
 import signal
 import sys
@@ -20,6 +21,9 @@ from _ongwatch.util import get_credentials
 import toml
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
+
+os.environ["PYTHON_COLORS"] = "0"
+os.environ["PYTHONNODEBUGRANGES"] = "1"
 
 # ---------------------------------------------------------------------------
 # Backend supervisor settings

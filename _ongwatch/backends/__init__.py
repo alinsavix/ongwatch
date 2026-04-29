@@ -11,6 +11,8 @@ BackendAuthHandler = Callable[[argparse.Namespace, Dict[str, str]
 BackendStartHandler = Callable[[argparse.Namespace, Dict[str, str]
                                 | None, logging.Logger, Dispatcher], Coroutine[None, None, None]]
 
+# FIXME: Add our test and synthetic backends to this list, after making sure
+# that they default to 'off'
 BACKEND_LIST = ["twitch", "streamelements", "streamlabs"]
 
 

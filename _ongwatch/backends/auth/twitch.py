@@ -39,10 +39,12 @@ USER_SCOPES = TIOScopes([
 
 
 def write_token(token_file: Path, token: Dict[str, str]) -> None:
-    with open(token_file, 'w') as f:
+    with token_file.open('w') as f:
         json.dump(token, f)
 
 
+# FIXME: device code flow doesn't work until the next big TwitchIO release,
+# make sure this gets tested after that's released.
 async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: logging.Logger) -> bool:
     if creds is None:
         raise ValueError("No credentials specified")

@@ -25,9 +25,6 @@ from tdvutil.argparse import CheckFile
 os.environ["PYTHON_COLORS"] = "0"
 os.environ["PYTHONNODEBUGRANGES"] = "1"
 
-# ---------------------------------------------------------------------------
-# Backend supervisor settings
-# ---------------------------------------------------------------------------
 
 # Sliding window for counting restarts.  If a backend fails _BACKEND_RESTART_MAX
 # times within _BACKEND_RESTART_WINDOW seconds it is marked permanently failed.
@@ -36,7 +33,12 @@ _BACKEND_RESTART_MAX:    int   = 5       # restarts within the window
 _BACKEND_BACKOFF_BASE:   float = 1.0     # initial backoff in seconds
 _BACKEND_BACKOFF_MAX:    float = 60.0    # maximum backoff in seconds
 
-
+# Run a backend and automatically restart it on failure, with exponential
+# backoff and a sliding-window restart budget.
+#
+# Returns normally when the restart budget is exhausted (permanent failure).
+# Propagates CancelledError transparently so the main loop can cancel it on
+# shutdown.
 async def _supervised_backend(
     name: str,
     startfunc: BackendStartHandler,
@@ -45,14 +47,6 @@ async def _supervised_backend(
     logger: logging.Logger,
     dispatcher: Dispatcher,
 ) -> None:
-    """
-    Run a backend and automatically restart it on failure, with exponential
-    backoff and a sliding-window restart budget.
-
-    Returns normally when the restart budget is exhausted (permanent failure).
-    Propagates CancelledError transparently so the main loop can cancel it on
-    shutdown.
-    """
     restart_times: deque[float] = deque()
 
     while True:
@@ -61,7 +55,8 @@ async def _supervised_backend(
             # A clean return is unexpected for long-running backends.
             logger.warning("Backend '%s' exited cleanly; scheduling restart", name)
         except asyncio.CancelledError:
-            raise   # propagate shutdown — do not restart
+            # propagate shutdown — do not restart
+            raise
         except Exception:
             logger.error("Backend '%s' failed with unhandled exception", name, exc_info=True)
 
@@ -77,7 +72,7 @@ async def _supervised_backend(
                 "marking it permanently failed",
                 name, _BACKEND_RESTART_MAX, _BACKEND_RESTART_WINDOW,
             )
-            return  # the main loop will notice and eventually shut down
+            return
 
         attempt = len(restart_times) + 1
         backoff = min(_BACKEND_BACKOFF_BASE * (2 ** len(restart_times)), _BACKEND_BACKOFF_MAX)
@@ -90,12 +85,15 @@ async def _supervised_backend(
         try:
             await asyncio.sleep(backoff)
         except asyncio.CancelledError:
-            raise   # shutdown during backoff — propagate
+            # shutdown during backoff
+            raise
 
 
 async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.Logger) -> int:
     logger.setLevel(logging.WARNING)  # quiet things down
     creds = get_credentials(args.credentials_file, backend, args.environment)
+
+    # FIXME: make it possible to have a backend with no auth info (maybe)
     if creds is None:
         logger.error(f"No credentials found for {backend}")
         return 1
@@ -114,6 +112,11 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     return 0 if await authfunc(args, creds, logging.getLogger(args.auth)) else 1
 
 
+# Get output configs from config file, instantiate  each output, and return
+# two lists: one for the dispatcher with (name, instance, config) tuples,
+# and one with the raw output instances (for calling stop() at shutdown).
+#
+# FIXME: Look at how we use/store these, wee if we really need two returns
 def _load_outputs(
     config: dict[str, Any],
     environment: str,
@@ -122,12 +125,6 @@ def _load_outputs(
     disable_output: list[str],
     debug_output: list[str],
 ) -> tuple[list[tuple[str, Any, OutputConfig]], list[Any]]:
-    """
-    Parse [outputs.*.<environment>] sections from ongwatch.conf, instantiate
-    each output, and return two parallel lists:
-      - triples suitable for Dispatcher.__init__
-      - the raw output instances (for calling stop() at shutdown)
-    """
     outputs_cfg: dict[str, Any] = config.get(environment, {}).get("outputs", {})
 
     if enable_output and enable_output != ["all"]:
@@ -176,38 +173,42 @@ def _load_outputs(
     return triples, instances
 
 
+# FIXME: A bit long, might need refactoring
 async def async_main(args: argparse.Namespace) -> int:
-    # ------------------------------------------------------------------
-    # Load ongwatch.conf
-    # ------------------------------------------------------------------
     config: dict[str, Any] = {}
     if args.config_file.exists():
         config = dict(toml.load(args.config_file))
     else:
+        # FIXME: Should this be an error?
         logging.warning(f"Config file {args.config_file} not found; no outputs will be active")
 
+    logging.info("Ongwatch is in startup")
+
+    # load dispatcher configs
     dispatcher_section: dict[str, Any] = config.get("dispatcher", {})
     heartbeat_interval = float(dispatcher_section.get("heartbeat_interval", 60))
 
-    # ------------------------------------------------------------------
-    # Start outputs and build dispatcher
-    # ------------------------------------------------------------------
+    # start outputs
     output_triples, output_instances = _load_outputs(
         config, args.environment, args.config_file,
         args.enable_output, args.disable_output, args.debug_output,
     )
 
+    # FIXME: We should probably configure loggers to pass to outputs, like we
+    # do for backends
+
     for output in output_instances:
         await output.start()
 
+    # and start the dispatcher
     dispatcher = Dispatcher(output_triples, heartbeat_interval=heartbeat_interval)
     await dispatcher.start()
 
-    # ------------------------------------------------------------------
-    # Start backends
-    # ------------------------------------------------------------------
+
+    # and now that we have the outputs going (and hopefully ready to accept
+    # events) start our backends
     if args.enable_backend and args.enable_backend != ["all"]:
-        # CLI --enable-backend takes full precedence
+        # Make --enable-backend takes full precedence
         enabled_backends = args.enable_backend
     else:
         backends_cfg: dict[str, Any] = config.get(args.environment, {}).get("backends", {})
@@ -232,7 +233,6 @@ async def async_main(args: argparse.Namespace) -> int:
         )
         return 1
 
-    logging.info("Ongwatch is in startup")
     logging.info(f"Enabled backends: {' '.join(enabled_backends)}")
 
     supervised_tasks: list[asyncio.Task[None]] = []
@@ -301,20 +301,20 @@ async def async_main(args: argparse.Namespace) -> int:
     finally:
         logging.info("Shutting down...")
 
-        # 1. Stop backends — no new events after this point
+        # Stop backends — no new events after this point
         shutdown_task.cancel()
         for task in supervised_tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(shutdown_task, *supervised_tasks, return_exceptions=True)
 
-        # 2. Drain queues (up to 30 s)
+        # Drain queues for up to 30 seconds
         await dispatcher.drain(timeout=30)
 
-        # 3. Cancel dispatcher internal tasks
+        # Cancel dispatcher internal tasks
         await dispatcher.stop()
 
-        # 4. Close each output
+        # Close each output
         for output in output_instances:
             await output.stop()
 
@@ -369,7 +369,6 @@ def parse_args() -> argparse.Namespace:
         help="enable debugging of asyncio"
     )
 
-    # FIXME: the following should probably be per-backend
     parser.add_argument(
         "--debug-backend",
         type=str,
@@ -450,6 +449,7 @@ def main() -> int:
     logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
 
+    # If we're being asked to auth, only do that
     if args.auth is not None:
         return asyncio.run(do_auth_flow(args, args.auth, logging.getLogger(f"auth.{args.auth}")), debug=args.debug_asyncio)
 

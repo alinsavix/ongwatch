@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Dict
 
 import aiohttp
+import twitchio
 from twitchio import eventsub
-from twitchio.ext import commands
 from twitchio.models.eventsub_ import (ChannelBitsUse, ChannelRaid,
                                        ChatMessage, ChatNotification,
                                        HypeTrainBegin, HypeTrainEnd,
@@ -209,7 +209,7 @@ def _save_conduit_id(path: Path, conduit_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Token pre-validation (needed to get user_id before constructing AutoBot)
+# Token pre-validation (needed to get user_id before constructing AutoClient)
 # ---------------------------------------------------------------------------
 
 async def _validate_token(access_token: str) -> str:
@@ -228,7 +228,7 @@ async def _validate_token(access_token: str) -> str:
 # TwitchIO client
 # ---------------------------------------------------------------------------
 
-class OngWatch_Twitch(commands.AutoBot):
+class OngWatch_Twitch(twitchio.AutoClient):
     botargs: argparse.Namespace
     logger: logging.Logger
     dispatcher: Dispatcher
@@ -258,7 +258,6 @@ class OngWatch_Twitch(commands.AutoBot):
             client_id=client_id,
             client_secret=client_secret,
             bot_id=bot_id,
-            prefix="!",
             conduit_id=conduit_id,
         )
 

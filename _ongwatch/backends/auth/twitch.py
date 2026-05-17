@@ -29,6 +29,7 @@ USER_SCOPES = TIOScopes([
     "moderator:read:followers",
     "moderator:read:shoutouts",
     "channel:bot",
+    "user:bot",
     "user:read:chat",
     "channel:read:ads",
     "user:read:moderated_channels",

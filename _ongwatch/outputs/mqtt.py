@@ -48,6 +48,80 @@ _EVENT_MAP: dict[type[OngwatchEvent], tuple[str, str, bool, bool]] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
+_CONFIG_KEYS = {
+    "host",
+    "port",
+    "channel",
+    "topic_prefix",
+    "client_id",
+    "username",
+    "password",
+    "tls",
+    "qos_events",
+    "qos_state",
+    "qos_heartbeat",
+}
+
+
+def _validate_unknown_keys(config: dict[str, Any]) -> None:
+    unknown = sorted(set(config) - _CONFIG_KEYS)
+    if unknown:
+        raise ValueError(f"unknown MQTT config key(s): {', '.join(unknown)}")
+
+
+def _validate_str(
+    config: dict[str, Any],
+    key: str,
+    *,
+    required: bool = False,
+    allow_empty: bool = True,
+) -> None:
+    if key not in config:
+        if required:
+            raise ValueError(f"MQTT config requires '{key}'")
+        return
+    value = config[key]
+    if not isinstance(value, str):
+        raise ValueError(f"MQTT config value '{key}' must be a string")
+    if not allow_empty and not value:
+        raise ValueError(f"MQTT config value '{key}' cannot be empty")
+
+
+def _validate_int(
+    config: dict[str, Any],
+    key: str,
+    default: int,
+    *,
+    min_value: int,
+    max_value: int,
+) -> None:
+    value = config.get(key, default)
+    if isinstance(value, bool):
+        raise ValueError(f"MQTT config value '{key}' must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"MQTT config value '{key}' must be an integer") from exc
+    if parsed < min_value or parsed > max_value:
+        raise ValueError(
+            f"MQTT config value '{key}' must be between {min_value} and {max_value}"
+        )
+
+
+def validate_config(config: dict[str, Any]) -> None:
+    """Validate MQTT-owned config keys."""
+    _validate_unknown_keys(config)
+    _validate_str(config, "channel", required=True, allow_empty=False)
+    for key in ("host", "topic_prefix", "client_id", "username", "password"):
+        _validate_str(config, key)
+    _validate_int(config, "port", 1883, min_value=1, max_value=65535)
+    _validate_int(config, "qos_events", 1, min_value=0, max_value=2)
+    _validate_int(config, "qos_state", 1, min_value=0, max_value=2)
+    _validate_int(config, "qos_heartbeat", 0, min_value=0, max_value=2)
+    if "tls" in config and not isinstance(config["tls"], bool):
+        raise ValueError("MQTT config value 'tls' must be a boolean")
+
+
 def _ts(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)

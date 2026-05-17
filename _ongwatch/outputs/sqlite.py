@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
 
@@ -8,7 +9,8 @@ import aiosqlite
 
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
                       OngwatchEvent, RaffleWinEvent, RaidIncomingEvent,
-                      SongRequestEvent, StreamStateEvent, SubscriptionEvent)
+                      RaidOutgoingEvent, SongRequestEvent, StreamStateEvent,
+                      SubscriptionEvent)
 from . import SendStatus
 
 # ---------------------------------------------------------------------------
@@ -50,12 +52,21 @@ _SCHEMA: list[str] = [
         count      INTEGER NOT NULL,
         raw        TEXT
     )""",
-    """CREATE TABLE IF NOT EXISTS raid (
+    """CREATE TABLE IF NOT EXISTS raid_incoming (
         id           INTEGER PRIMARY KEY,
         timestamp    TEXT    NOT NULL,
         backend      TEXT    NOT NULL,
         is_test      INTEGER NOT NULL DEFAULT 0,
         from_channel TEXT    NOT NULL,
+        viewer_count INTEGER NOT NULL,
+        raw          TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS raid_outgoing (
+        id           INTEGER PRIMARY KEY,
+        timestamp    TEXT    NOT NULL,
+        backend      TEXT    NOT NULL,
+        is_test      INTEGER NOT NULL DEFAULT 0,
+        to_channel   TEXT    NOT NULL,
         viewer_count INTEGER NOT NULL,
         raw          TEXT
     )""",
@@ -107,16 +118,34 @@ _MIGRATIONS: list[str] = [
     "ALTER TABLE subscription   ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE gift_sub       ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE raid           ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE raid_incoming  ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE raid_outgoing  ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE stream_state   ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE hype_train     ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE song_request   ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE raffle_win     ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
+    """INSERT OR IGNORE INTO raid_incoming
+        (id, timestamp, backend, is_test, from_channel, viewer_count, raw)
+        SELECT id, timestamp, backend, is_test, from_channel, viewer_count, raw
+        FROM raid""",
 ]
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def validate_config(config: dict[str, Any]) -> None:
+    unknown = sorted(set(config) - {"path"})
+    if unknown:
+        raise ValueError(f"unknown sqlite config key(s): {', '.join(unknown)}")
+    if "path" in config:
+        path = config["path"]
+        if not isinstance(path, str):
+            raise ValueError("sqlite config value 'path' must be a string")
+        if not path:
+            raise ValueError("sqlite config value 'path' cannot be empty")
+
 
 def _ts(dt: datetime) -> str:
     if dt.tzinfo is None:
@@ -149,10 +178,8 @@ class SQLiteOutput:
         for stmt in _SCHEMA:
             await self._db.execute(stmt)
         for stmt in _MIGRATIONS:
-            try:
+            with suppress(aiosqlite.OperationalError):
                 await self._db.execute(stmt)
-            except aiosqlite.OperationalError:
-                pass  # column already exists
         await self._db.commit()
 
     async def stop(self) -> None:
@@ -208,10 +235,20 @@ class SQLiteOutput:
 
         if isinstance(event, RaidIncomingEvent):
             await self._db.execute(
-                "INSERT INTO raid"
+                "INSERT INTO raid_incoming"
                 " (timestamp, backend, is_test, from_channel, viewer_count, raw)"
                 " VALUES (?,?,?,?,?,?)",
                 (ts, event.backend, int(event.is_test), event.from_channel, event.viewer_count, raw),
+            )
+            await self._db.commit()
+            return SendStatus.HANDLED
+
+        if isinstance(event, RaidOutgoingEvent):
+            await self._db.execute(
+                "INSERT INTO raid_outgoing"
+                " (timestamp, backend, is_test, to_channel, viewer_count, raw)"
+                " VALUES (?,?,?,?,?,?)",
+                (ts, event.backend, int(event.is_test), event.to_channel, event.viewer_count, raw),
             )
             await self._db.commit()
             return SendStatus.HANDLED

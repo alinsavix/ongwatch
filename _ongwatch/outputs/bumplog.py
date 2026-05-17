@@ -18,6 +18,18 @@ _EASTERN = pytz.timezone("US/Eastern")
 _TIER_VALUES = {1: 5.00, 2: 10.00, 3: 25.00}
 
 
+def validate_config(config: dict[str, Any]) -> None:
+    unknown = sorted(set(config) - {"path"})
+    if unknown:
+        raise ValueError(f"unknown bumplog config key(s): {', '.join(unknown)}")
+    if "path" in config:
+        path = config["path"]
+        if not isinstance(path, str):
+            raise ValueError("bumplog config value 'path' must be a string")
+        if not path:
+            raise ValueError("bumplog config value 'path' cannot be empty")
+
+
 def _format_ts(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)

@@ -16,6 +16,12 @@ _EASTERN = pytz.timezone("US/Eastern")
 _TIER_NAMES = {1: "Tier 1", 2: "Tier 2", 3: "Tier 3"}
 
 
+def validate_config(config: dict[str, Any]) -> None:
+    unknown = sorted(config)
+    if unknown:
+        raise ValueError(f"unknown console config key(s): {', '.join(unknown)}")
+
+
 def _ts(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)

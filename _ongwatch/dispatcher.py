@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 from typing import Any
 
 from .events import OngwatchEvent
@@ -31,14 +32,44 @@ class _Open:
 # Per-output config and stats
 # ---------------------------------------------------------------------------
 
+
+class OnErrorPolicy(StrEnum):
+    QUEUE = "queue"
+    DROP = "drop"
+
+
+class QueueOverflowPolicy(StrEnum):
+    DROP_OLDEST = "drop_oldest"
+    DROP_NEWEST = "drop_newest"
+    CIRCUIT_BREAK = "circuit_break"
+
 @dataclass
 class OutputConfig:
-    on_error: str = "queue"               # "queue" | "drop"
+    on_error: OnErrorPolicy = OnErrorPolicy.QUEUE
     queue_max_size: int = 0               # 0 = unbounded (only for "queue" mode)
-    queue_overflow: str = "drop_oldest"   # "drop_oldest" | "drop_newest" | "circuit_break"
+    queue_overflow: QueueOverflowPolicy = QueueOverflowPolicy.DROP_OLDEST
     circuit_break_cooldown: float = 300.0
     circuit_break_flush_queue: bool = False
     max_retries: int = 3
+
+    def __post_init__(self) -> None:
+        try:
+            self.on_error = OnErrorPolicy(self.on_error)
+        except ValueError as exc:
+            raise ValueError("OutputConfig.on_error must be 'queue' or 'drop'") from exc
+        try:
+            self.queue_overflow = QueueOverflowPolicy(self.queue_overflow)
+        except ValueError as exc:
+            raise ValueError(
+                "OutputConfig.queue_overflow must be "
+                "'drop_oldest', 'drop_newest', or 'circuit_break'"
+            ) from exc
+        if self.queue_max_size < 0:
+            raise ValueError("OutputConfig.queue_max_size must be >= 0")
+        if self.circuit_break_cooldown < 0:
+            raise ValueError("OutputConfig.circuit_break_cooldown must be >= 0")
+        if self.max_retries < 0:
+            raise ValueError("OutputConfig.max_retries must be >= 0")
 
 
 @dataclass
@@ -73,7 +104,7 @@ class _OutputState:
         self._retry_counts: dict[int, int] = {}  # id(event) -> attempt count
         self._draining: bool = False
         self._queue: deque[OngwatchEvent] | None = (
-            deque() if config.on_error == "queue" else None
+            deque() if config.on_error == OnErrorPolicy.QUEUE else None
         )
 
     @property
@@ -113,21 +144,15 @@ class _OutputState:
             return
 
         policy = self.config.queue_overflow
-        if policy == "drop_oldest":
+        if policy == QueueOverflowPolicy.DROP_OLDEST:
             self._queue.popleft()
             self.stats.dropped += 1
             self._queue.append(event)
             self._notify.set()
-        elif policy == "drop_newest":
+        elif policy == QueueOverflowPolicy.DROP_NEWEST:
             self.stats.dropped += 1
-        elif policy == "circuit_break":
+        elif policy == QueueOverflowPolicy.CIRCUIT_BREAK:
             self._trip_circuit()
-        else:
-            log.warning(
-                "Unknown queue_overflow policy %r for output %r, dropping event",
-                policy, self.name,
-            )
-            self.stats.dropped += 1
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +184,7 @@ class Dispatcher:
                 state.stats.dropped += 1
                 log.debug("Circuit open for %r, dropping event", state.name)
                 continue
-            if state.config.on_error == "drop":
+            if state.config.on_error == OnErrorPolicy.DROP:
                 asyncio.create_task(self._fire_and_forget(state, event))
             else:
                 state.enqueue(event)
@@ -167,7 +192,7 @@ class Dispatcher:
     async def start(self) -> None:
         """Start per-output worker tasks and the heartbeat task."""
         for state in self._states:
-            if state.config.on_error == "queue":
+            if state.config.on_error == OnErrorPolicy.QUEUE:
                 state._worker_task = asyncio.create_task(
                     self._worker(state), name=f"worker:{state.name}"
                 )
@@ -341,7 +366,7 @@ class Dispatcher:
                             log.info("Output %r circuit recovered after probe", state.name)
                             # Re-start worker if it exited during the open period
                             if (
-                                state.config.on_error == "queue"
+                                state.config.on_error == OnErrorPolicy.QUEUE
                                 and (state._worker_task is None or state._worker_task.done())
                             ):
                                 state._draining = False

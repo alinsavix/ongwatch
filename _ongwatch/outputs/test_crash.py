@@ -18,6 +18,24 @@ log = logging.getLogger(__name__)
 _CRASH_AFTER: int = 3
 
 
+def validate_config(config: dict[str, Any]) -> None:
+    unknown = sorted(set(config) - {"crash_after"})
+    if unknown:
+        raise ValueError(f"unknown test_crash config key(s): {', '.join(unknown)}")
+    if "crash_after" in config:
+        value = config["crash_after"]
+        if isinstance(value, bool):
+            raise ValueError("test_crash config value 'crash_after' must be an integer")
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "test_crash config value 'crash_after' must be an integer"
+            ) from exc
+        if parsed < 0:
+            raise ValueError("test_crash config value 'crash_after' must be >= 0")
+
+
 class TestCrashOutput:
     """Handles the first ``crash_after`` events then raises on every subsequent send()."""
 

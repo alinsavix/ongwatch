@@ -1,11 +1,15 @@
 import argparse
+import json
 import logging
 import re
+import socket
+from pathlib import Path
 from typing import Dict
 
-from _ongwatch.util import get_token, now, out, printextra, printsupport
+from _ongwatch.util import now, out, printextra, printsupport
 
-from twitchio import Client, eventsub
+import twitchio
+from twitchio import eventsub
 from twitchio.models.eventsub_ import (ChannelBitsUse, ChannelRaid,
                                        ChatMessage, ChatNotification,
                                        HypeTrainBegin, HypeTrainEnd,
@@ -28,53 +32,91 @@ SUB_VALUES = {
 }
 
 
-class OngWatch_Twitch(Client):
+# ---------------------------------------------------------------------------
+# Conduit ID + tokens-file path helpers
+# ---------------------------------------------------------------------------
+
+def _conduit_id_path(env: str) -> Path:
+    hostname = socket.gethostname().split(".")[0]
+    return Path.cwd() / f"twitch_conduit_id.{env}.{hostname}.txt"
+
+
+def _load_conduit_id(path: Path) -> str | bool:
+    if path.exists():
+        return path.read_text().strip()
+    return True  # True = ask AutoClient to create a new conduit
+
+
+def _save_conduit_id(path: Path, conduit_id: str) -> None:
+    path.write_text(conduit_id)
+
+
+def _tio_tokens_path(env: str) -> Path:
+    return Path.cwd() / f".tio.tokens.{env}.json"
+
+
+def _read_bot_id(tokens_path: Path) -> str:
+    # TwitchIO stores tokens as a dict keyed by user_id. Our use case has
+    # exactly one user (the streamer), so the sole key is the bot_id.
+    with open(tokens_path) as f:
+        data = json.load(f)
+    return next(iter(data))
+
+
+class OngWatch_Twitch(twitchio.AutoClient):
     botargs: argparse.Namespace
     logger: logging.Logger
-    token_user_id: str
     request_urls: Dict[str, str]
+    _subscriptions: list
+    _conduit_id_path: Path
+    _tokens_path: Path
 
-    def __init__(self, client_id: str, client_secret: str,
-                 botargs: argparse.Namespace, logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        bot_id: str,
+        botargs: argparse.Namespace,
+        logger: logging.Logger,
+        subscriptions: list,
+        conduit_id: str | bool,
+        conduit_id_path: Path,
+        tokens_path: Path,
+    ) -> None:
         self.botargs = botargs
         self.logger = logger
         self.request_urls = {}
-        super().__init__(client_id=client_id, client_secret=client_secret)
+        self._subscriptions = subscriptions
+        self._conduit_id_path = conduit_id_path
+        self._tokens_path = tokens_path
+        super().__init__(
+            client_id=client_id,
+            client_secret=client_secret,
+            bot_id=bot_id,
+            conduit_id=conduit_id,
+        )
+
+    async def load_tokens(self, path: str | None = None, /) -> None:
+        await super().load_tokens(path or str(self._tokens_path))
+
+    async def save_tokens(self, path: str | None = None, /) -> None:
+        await super().save_tokens(path or str(self._tokens_path))
 
     async def setup_hook(self) -> None:
-        uid = self.token_user_id
-
-        subs = [
-            eventsub.ChatMessageSubscription(
-                broadcaster_user_id=uid,
-                user_id=uid,
-            ),
-            eventsub.ChatNotificationSubscription(
-                broadcaster_user_id=uid,
-                user_id=uid,
-            ),
-            eventsub.ChannelBitsUseSubscription(
-                broadcaster_user_id=uid,
-            ),
-            eventsub.StreamOnlineSubscription(
-                broadcaster_user_id=uid,
-            ),
-            eventsub.StreamOfflineSubscription(
-                broadcaster_user_id=uid,
-            ),
-            eventsub.HypeTrainBeginSubscription(
-                broadcaster_user_id=uid,
-            ),
-            eventsub.HypeTrainEndSubscription(
-                broadcaster_user_id=uid,
-            ),
-            eventsub.ChannelRaidSubscription(
-                to_broadcaster_user_id=uid,
-            ),
-        ]
-
-        for sub in subs:
-            await self.subscribe_websocket(payload=sub, token_for=uid)
+        # Conduits persist subscriptions server-side, so on a reused conduit
+        # most/all of these will come back as 409 Conflict ("already exists").
+        # Ignore those; surface anything else as a warning.
+        result = await self.multi_subscribe(self._subscriptions, stop_on_error=False)
+        real_errors = [e for e in result.errors if e.error.status != 409]
+        already_subscribed = len(result.errors) - len(real_errors)
+        self.logger.info(
+            f"EventSub: {len(result.success)} new, "
+            f"{already_subscribed} already subscribed, "
+            f"{len(real_errors)} failed"
+        )
+        for e in real_errors:
+            self.logger.warning(f"Subscription failed: {e.subscription!r}: {e.error}")
+        _save_conduit_id(self._conduit_id_path, self.conduit_info.id)
 
     async def event_ready(self) -> None:
         self.logger.info("Client is ready")
@@ -204,7 +246,7 @@ class OngWatch_Twitch(Client):
 
     async def event_raid(self, payload: ChannelRaid) -> None:
         self.logger.debug(f"Raid received")
-        if payload.from_broadcaster.id == self.token_user_id:
+        if payload.from_broadcaster.id == self.bot_id:
             return
 
         from_user = payload.from_broadcaster.display_name
@@ -217,18 +259,54 @@ async def start(args: argparse.Namespace, creds: Dict[str, str] | None, logger: 
     if creds is None:
         raise ValueError("No credentials specified")
 
-    tokens = get_token(args.token_file)
+    env: str = args.environment
+    tokens_path = _tio_tokens_path(env)
+    conduit_path = _conduit_id_path(env)
+    conduit_id = _load_conduit_id(conduit_path)
+    bot_id = _read_bot_id(tokens_path)
+
+    subs = [
+        eventsub.ChatMessageSubscription(
+            broadcaster_user_id=bot_id,
+            user_id=bot_id,
+        ),
+        eventsub.ChatNotificationSubscription(
+            broadcaster_user_id=bot_id,
+            user_id=bot_id,
+        ),
+        eventsub.ChannelBitsUseSubscription(
+            broadcaster_user_id=bot_id,
+        ),
+        eventsub.StreamOnlineSubscription(
+            broadcaster_user_id=bot_id,
+        ),
+        eventsub.StreamOfflineSubscription(
+            broadcaster_user_id=bot_id,
+        ),
+        eventsub.HypeTrainBeginSubscription(
+            broadcaster_user_id=bot_id,
+        ),
+        eventsub.HypeTrainEndSubscription(
+            broadcaster_user_id=bot_id,
+        ),
+        eventsub.ChannelRaidSubscription(
+            to_broadcaster_user_id=bot_id,
+        ),
+    ]
+
     client = OngWatch_Twitch(
         client_id=creds['client_id'],
         client_secret=creds['client_secret'],
+        bot_id=bot_id,
         botargs=args,
         logger=logger,
+        subscriptions=subs,
+        conduit_id=conduit_id,
+        conduit_id_path=conduit_path,
+        tokens_path=tokens_path,
     )
 
     logger.info(f"Starting Twitch backend")
 
     async with client:
-        validated = await client.add_token(tokens['token'], tokens['refresh'])
-        client.token_user_id = validated.user_id  # store for setup_hook
-        # no need to save our tokens, since we're using DCF tokens
-        await client.start(load_tokens=False, save_tokens=False, with_adapter=False)
+        await client.start(with_adapter=False)

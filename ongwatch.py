@@ -119,14 +119,6 @@ def parse_args() -> argparse.Namespace:
         help="file with discord credentials"
     )
 
-    # FIXME: deal with this better -- it's twitch only (for now?)
-    parser.add_argument(
-        "--token-file", "-t",
-        type=Path,
-        default=None,
-        help="file to store twitch credentials"
-    )
-
     parser.add_argument(
         "--auth",
         type=str,
@@ -146,6 +138,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="enable debugging of asyncio"
+    )
+
+    parser.add_argument(
+        "--debug-twitchio",
+        action="store_true",
+        default=False,
+        help="enable DEBUG-level logging for the twitchio library"
     )
 
     # FIXME: the following should probably be per-backend
@@ -178,9 +177,6 @@ def parse_args() -> argparse.Namespace:
     if parsed_args.credentials_file is None:
         parsed_args.credentials_file = Path(__file__).parent / "credentials.toml"
 
-    if parsed_args.token_file is None:
-        parsed_args.token_file = Path(__file__).parent / f"twitch_user_token.{parsed_args.environment}.json"
-
     return parsed_args
 
 
@@ -196,6 +192,9 @@ def main() -> int:
 
     logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
+
+    if args.debug_twitchio:
+        logging.getLogger("twitchio").setLevel(logging.DEBUG)
 
     # FIXME: is this the same as calling asyncio.run() with debug=True?
     # logging.getLogger("asyncio").setLevel(logging.DEBUG)

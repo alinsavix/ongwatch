@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
 
 import aiomqtt
+from aiomqtt.exceptions import MqttCodeError
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +63,23 @@ _CONFIG_KEYS = {
     "qos_state",
     "qos_heartbeat",
 }
+
+_PERMANENT_CONNECT_CODES = {1, 2, 4, 5}
+_PERMANENT_CONNECT_MESSAGES = (
+    "bad username",
+    "bad user name",
+    "bad password",
+    "not authorised",
+    "not authorized",
+    "invalid client identifier",
+    "client identifier not valid",
+    "incorrect protocol version",
+    "unsupported protocol version",
+)
+
+
+class PermanentMQTTError(RuntimeError):
+    """MQTT configuration/authorization failure that retries cannot fix."""
 
 
 def _validate_unknown_keys(config: dict[str, Any]) -> None:
@@ -120,6 +139,18 @@ def validate_config(config: dict[str, Any]) -> None:
     _validate_int(config, "qos_heartbeat", 0, min_value=0, max_value=2)
     if "tls" in config and not isinstance(config["tls"], bool):
         raise ValueError("MQTT config value 'tls' must be a boolean")
+
+
+def _is_permanent_connect_error(exc: aiomqtt.MqttError) -> bool:
+    if isinstance(exc, MqttCodeError):
+        rc = exc.rc
+        if isinstance(rc, int):
+            return rc in _PERMANENT_CONNECT_CODES
+        reason = str(rc).lower()
+        return any(message in reason for message in _PERMANENT_CONNECT_MESSAGES)
+
+    message = str(exc).lower()
+    return any(fragment in message for fragment in _PERMANENT_CONNECT_MESSAGES)
 
 
 def _ts(dt: datetime) -> str:
@@ -194,6 +225,7 @@ class MQTTOutput:
         self._qos_state: int = int(config.get("qos_state", 1))
         self._qos_heartbeat: int = int(config.get("qos_heartbeat", 0))
         self._client: aiomqtt.Client | None = None
+        self._permanent_error: PermanentMQTTError | None = None
 
     def _topic(self, suffix: str) -> str:
         if self._topic_prefix:
@@ -217,15 +249,22 @@ class MQTTOutput:
         )
 
     async def _connect(self) -> None:
+        if self._permanent_error is not None:
+            raise self._permanent_error
+
         client = self._make_client()
         try:
             await client.__aenter__()
-        except aiomqtt.MqttError:
+        except aiomqtt.MqttError as exc:
             # Ensure paho's network thread is stopped even on connection failure.
-            try:
+            with suppress(Exception):
                 await client.__aexit__(None, None, None)
-            except Exception:
-                pass
+            if _is_permanent_connect_error(exc):
+                self._permanent_error = PermanentMQTTError(
+                    f"MQTT permanent connection failure for "
+                    f"{self._host}:{self._port}: {exc}"
+                )
+                raise self._permanent_error from exc
             raise
         self._client = client
         await client.publish(self._topic("presence"), "online", qos=1, retain=True)
@@ -235,20 +274,19 @@ class MQTTOutput:
         if client is None:
             return
         if publish_offline:
-            try:
+            with suppress(Exception):
                 await client.publish(
                     self._topic("presence"), "offline", qos=1, retain=True
                 )
-            except Exception:
-                pass
-        try:
+        with suppress(Exception):
             await client.__aexit__(None, None, None)
-        except Exception:
-            pass
 
     async def start(self) -> None:
         try:
             await self._connect()
+        except PermanentMQTTError:
+            log.error("MQTT: permanent connection failure", exc_info=True)
+            raise
         except aiomqtt.MqttError as exc:
             log.warning("MQTT: could not connect to %s:%d — %s (will retry on heartbeat)",
                         self._host, self._port, exc)
@@ -257,6 +295,8 @@ class MQTTOutput:
         await self._disconnect(publish_offline=True)
 
     async def heartbeat(self) -> None:
+        if self._permanent_error is not None:
+            raise self._permanent_error
         if self._client is None:
             await self._connect()   # raises aiomqtt.MqttError on failure
         assert self._client is not None
@@ -265,6 +305,9 @@ class MQTTOutput:
         )
 
     async def send(self, event: OngwatchEvent) -> SendStatus:
+        if self._permanent_error is not None:
+            return SendStatus.ERROR
+
         if self._client is None:
             return SendStatus.TRANSIENT
 

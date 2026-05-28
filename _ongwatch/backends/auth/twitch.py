@@ -1,11 +1,14 @@
 import argparse
-import json
+import asyncio
 import logging
+from contextlib import suppress
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 from twitchio import Client
+from twitchio.authentication import UserTokenPayload
 from twitchio.authentication.scopes import Scopes as TIOScopes
+from twitchio.web import AiohttpAdapter
 
 USER_SCOPES = TIOScopes([
     "bits:read",
@@ -39,35 +42,56 @@ USER_SCOPES = TIOScopes([
 ])
 
 
-def write_token(token_file: Path, token: Dict[str, str]) -> None:
-    with token_file.open('w') as f:
-        json.dump(token, f)
+def _tio_tokens_path(env: str) -> Path:
+    return Path.cwd() / f".tio.tokens.{env}.json"
 
 
-# FIXME: device code flow doesn't work until the next big TwitchIO release,
-# make sure this gets tested after that's released.
 async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: logging.Logger) -> bool:
     if creds is None:
         raise ValueError("No credentials specified")
 
-    client = Client(client_id=creds['client_id'], client_secret=creds['client_secret'])
+    env: str = args.environment
+    tokens_path = _tio_tokens_path(env)
 
-    dcf = await client.device_code_flow(scopes=USER_SCOPES)
-    print(f'Go to: {dcf.verification_uri}')
-    print(f'Enter code: {dcf.user_code}')
+    host = creds.get("auth_host", "localhost")
+    port = int(creds.get("auth_port", 4343))
+    domain = creds.get("auth_domain")  # optional; enables https + external URL
 
-    try:
-        token = await client.device_code_authorization(
-            device_code=dcf.device_code,
-            interval=dcf.interval,
-        )
-    except Exception as e:
-        logger.error(f'Failed to authorize: {e}')
-        return False
+    adapter: AiohttpAdapter[Any] = AiohttpAdapter(host=host, port=port, domain=domain)
 
-    write_token(args.token_file, {
-        'token': token.access_token,
-        'refresh': token.refresh_token,
-    })
-    print(f"\nSuccess, written to {args.token_file}")
+    done = asyncio.Event()
+
+    class AuthClient(Client):
+        async def event_oauth_authorized(self, payload: UserTokenPayload) -> None:
+            await super().event_oauth_authorized(payload)
+            logger.info(f"Authorized user_id={payload.user_id}")
+            done.set()
+
+        async def save_tokens(self, path: str | None = None, /) -> None:
+            await super().save_tokens(path or str(tokens_path))
+
+    client = AuthClient(
+        client_id=creds["client_id"],
+        client_secret=creds["client_secret"],
+        adapter=adapter,
+    )
+
+    if domain:
+        base = domain if domain.startswith("http") else f"https://{domain}"
+    else:
+        base = f"http://{host}:{port}"
+    visit_url = f"{base}/oauth?scopes={USER_SCOPES.urlsafe()}"
+
+    print(f"\nVisit this URL in your browser to authorize:\n  {visit_url}\n")
+
+    async with client:
+        start_task = asyncio.create_task(client.start(load_tokens=False))
+        try:
+            await done.wait()
+        finally:
+            await client.close()
+            with suppress(asyncio.CancelledError):
+                await start_task
+
+    print(f"\nSuccess, tokens written to {tokens_path}")
     return True

@@ -1,5 +1,4 @@
 import datetime
-import json
 import logging
 import sys
 import time
@@ -33,26 +32,20 @@ def timestr_est(ts: int) -> str:
     return eastern_time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def get_token(token_file: Path) -> Dict[str, str]:
-    with open(token_file, 'r') as f:
-        return cast(Dict[str, str], json.load(f))
-
-
 async def get_json_url(url: str) -> Dict[str, Any]:
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status != 200:
-                raise Exception(f"HTTP {response.status} for {url}")
+    async with aiohttp.ClientSession() as session, session.get(url) as response:
+        if response.status != 200:
+            raise Exception(f"HTTP {response.status} for {url}")
 
-            # else
-            return await response.json()
+        # else
+        return cast(Dict[str, Any], await response.json())
 
 
 def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str, str] | None:
     config = toml.load(cfgfile)
 
     try:
-        return config[environment][subsystem]
+        return cast(Dict[str, str], config[environment][subsystem])
     except KeyError:
         logging.warning(f"no credentials found for '{environment}.{subsystem}'")
         return None

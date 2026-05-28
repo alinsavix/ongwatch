@@ -545,14 +545,6 @@ def parse_args() -> argparse.Namespace:
         help="runtime config file (ongwatch.conf)"
     )
 
-    # FIXME: deal with this better -- it's twitch only (for now?)
-    parser.add_argument(
-        "--token-file", "-t",
-        type=Path,
-        default=None,
-        help="file to store twitch credentials"
-    )
-
     parser.add_argument(
         "--auth",
         type=str,
@@ -572,6 +564,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="enable debugging of asyncio"
+    )
+
+    parser.add_argument(
+        "--debug-twitchio",
+        action="store_true",
+        default=False,
+        help="enable DEBUG-level logging for the twitchio library"
     )
 
     parser.add_argument(
@@ -630,9 +629,6 @@ def parse_args() -> argparse.Namespace:
     if parsed_args.config_file is None:
         parsed_args.config_file = Path(__file__).parent / "ongwatch.conf"
 
-    if parsed_args.token_file is None:
-        parsed_args.token_file = Path(__file__).parent / f"twitch_user_token.{parsed_args.environment}.json"
-
     return parsed_args
 
 
@@ -647,12 +643,16 @@ def main() -> int:
     # paho-mqtt (used by aiomqtt) requires add_reader/add_writer, which are
     # only available on SelectorEventLoop — not the Windows default ProactorEventLoop.
     if platform.system() == "Windows":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        windows_policy = cast(Any, asyncio).WindowsSelectorEventLoopPolicy
+        asyncio.set_event_loop_policy(windows_policy())
 
     args = parse_args()
 
     logformat = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=logformat)
+
+    if args.debug_twitchio:
+        logging.getLogger("twitchio").setLevel(logging.DEBUG)
 
     # If we're being asked to auth, only do that
     if args.auth is not None:

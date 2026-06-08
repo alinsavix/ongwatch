@@ -24,6 +24,10 @@ build/
 dist/
 sdist/
 
+# caches
+/.*_cache/
+/.*-cache/
+
 # testing bits (if we have them)
 .tox/
 .nox/

@@ -52,12 +52,17 @@ class BackendSpec:
     creds: dict[str, str] | None
     logger: logging.Logger
 
+
 # Run a backend and automatically restart it on failure, with exponential
 # backoff and a sliding-window restart budget.
 #
 # Returns normally when the restart budget is exhausted (permanent failure).
 # Propagates CancelledError transparently so the main loop can cancel it on
 # shutdown.
+#
+# We get one instance of this for each backend
+#
+# FIXME: Pay more attention to async behvior here
 async def _supervised_backend(
     name: str,
     startfunc: BackendStartHandler,
@@ -71,7 +76,7 @@ async def _supervised_backend(
     while True:
         try:
             await startfunc(args, creds, logger, dispatcher)
-            # A clean return is unexpected for long-running backends.
+            # A clean return is a failure mode — restart
             logger.warning("Backend '%s' exited cleanly; scheduling restart", name)
         except asyncio.CancelledError:
             # propagate shutdown — do not restart
@@ -104,10 +109,11 @@ async def _supervised_backend(
         try:
             await asyncio.sleep(backoff)
         except asyncio.CancelledError:
-            # shutdown during backoff
             raise
 
 
+# If we're doing --auth, which is effectively a separate mode. Might need to
+# work while live at some point, but not right now.
 async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.Logger) -> int:
     logger.setLevel(logging.WARNING)  # quiet things down
     creds = get_credentials(args.credentials_file, backend, args.environment)
@@ -244,6 +250,7 @@ def _output_handler_config(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# FIXME: can we simplify this?
 def _enabled_names(
     configured: dict[str, Any],
     enable_names: list[str],
@@ -277,6 +284,7 @@ def _load_backend_specs(
         f"{args.environment}.backends",
     )
 
+    # Gotta have at least one backend configured, otherwise what's the point?
     if not backends_cfg and not args.enable_backend:
         raise ValueError(
             f"No [{args.environment}.backends.*] sections found in {args.config_file}; "
@@ -290,6 +298,7 @@ def _load_backend_specs(
         f"{args.environment}.backends",
     )
 
+    # Gotta have at least one backend enabled, otherwise what's the point?
     if not enabled_backends:
         raise ValueError(
             f"No backends enabled for environment '{args.environment}'; "
@@ -393,18 +402,18 @@ async def async_main(args: argparse.Namespace) -> int:
     if args.config_file.exists():
         config = dict(toml.load(args.config_file))
     else:
-        # FIXME: Should this be an error?
-        logging.warning(f"Config file {args.config_file} not found; no outputs will be active")
+        logging.error(f"Config file {args.config_file} not found")
+        return 1
 
     logging.info("Ongwatch is in startup")
 
     try:
         dispatcher_section = _as_config_section(config.get("dispatcher", {}), "dispatcher")
-        heartbeat_interval = _parse_float(
+        heartbeat_interval = _parse_int(
             dispatcher_section.get("heartbeat_interval", 60),
             "heartbeat_interval",
             "dispatcher",
-            min_value=0.001,
+            min_value=1,
         )
 
         output_triples, output_instances = _load_outputs(
@@ -550,6 +559,20 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="do authentication flow for a given backend"
+    )
+
+    parser.add_argument(
+        "--auth-callback-domain",
+        type=str,
+        default=None,
+        help="domain or host used for the auth callback URL (default: localhost)"
+    )
+
+    parser.add_argument(
+        "--auth-callback-port",
+        type=int,
+        default=None,
+        help="port used for the auth callback URL (default: 4343)"
     )
 
     parser.add_argument(

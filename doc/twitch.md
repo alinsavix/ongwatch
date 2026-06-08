@@ -12,6 +12,23 @@ in a separate file (currently `user_token.json`).
 The OAuth client id and secret should be added to the "twitch" section of 
 `credentials.conf`, under the keys "client_id" and "client_secret".
 
+Run the auth flow with:
+
+```shell
+uv run ongwatch.py --auth twitch --environment dev
+```
+
+The local OAuth callback defaults to `http://localhost:4343/oauth/callback`.
+If that domain or port is already in use, override it on the command line:
+
+```shell
+uv run ongwatch.py --auth twitch --environment dev --auth-callback-domain 127.0.0.1 --auth-callback-port 8080
+```
+
+The same values can be set in the Twitch section of `credentials.conf` with
+`auth_callback_domain` and `auth_callback_port`. Older `auth_host` and
+`auth_port` keys are still accepted.
+
 Tokens from the device auth flow do not expire as long as they are used at least
 once every 30 days.
 

@@ -50,7 +50,7 @@ class OutputConfig:
     queue_overflow: QueueOverflowPolicy = QueueOverflowPolicy.DROP_OLDEST
     circuit_break_cooldown: float = 300.0
     circuit_break_flush_queue: bool = False
-    max_retries: int = 3
+    max_retries: int = 3  # caps backoff growth (2**n s); does not drop events
 
     def __post_init__(self) -> None:
         try:
@@ -163,7 +163,7 @@ class Dispatcher:
     def __init__(
         self,
         outputs: list[tuple[str, Output, OutputConfig]],
-        heartbeat_interval: float = 60.0,
+        heartbeat_interval: int = 60,
     ) -> None:
         self._states = [_OutputState(name, out, cfg) for name, out, cfg in outputs]
         self._heartbeat_interval = heartbeat_interval
@@ -314,25 +314,21 @@ class Dispatcher:
                     state._retry_counts.pop(id(event), None)
 
                 elif result == SendStatus.TRANSIENT:
+                    # TRANSIENT means "couldn't deliver right now", not that
+                    # the event is bad. With on_error=queue we never drop it
+                    # for failing — we re-queue at the front and back off.
+                    # queue_overflow (applied in enqueue() when queue_max_size
+                    # is exceeded) is the only thing that drops events;
+                    # max_retries only caps how high the backoff escalates.
                     state.stats.transient_retries += 1
-                    if retry_count < state.config.max_retries:
-                        state._retry_counts[id(event)] = retry_count + 1
-                        backoff = float(2 ** retry_count)  # 1, 2, 4, 8 ... seconds
-                        log.debug(
-                            "Output %r TRANSIENT, retry %d/%d in %.1fs",
-                            state.name, retry_count + 1, state.config.max_retries, backoff,
-                        )
-                        await asyncio.sleep(backoff)
-                        queue.appendleft(event)
-                    else:
-                        state._retry_counts.pop(id(event), None)
-                        state.stats.errored += 1
-                        state.stats.last_error_at = now
-                        state.stats.dropped += 1
-                        log.error(
-                            "Output %r TRANSIENT exhausted %d retries, dropping event",
-                            state.name, state.config.max_retries,
-                        )
+                    state._retry_counts[id(event)] = retry_count + 1
+                    backoff = float(2 ** min(retry_count, state.config.max_retries))
+                    log.debug(
+                        "Output %r TRANSIENT, re-queue and retry in %.1fs (attempt %d)",
+                        state.name, backoff, retry_count + 1,
+                    )
+                    await asyncio.sleep(backoff)
+                    queue.appendleft(event)
 
                 elif result == SendStatus.ERROR:
                     state._retry_counts.pop(id(event), None)
@@ -393,6 +389,8 @@ class Dispatcher:
                         await state.output.heartbeat()
                         state.stats.heartbeats_ok += 1
                         state.stats.last_heartbeat_at = now
-                    except Exception:
+                    except Exception as exc:
                         state.stats.heartbeats_failed += 1
-                        log.warning("Output %r heartbeat failed", state.name)
+                        log.warning(
+                            "Output %r heartbeat failed: %s", state.name, exc
+                        )

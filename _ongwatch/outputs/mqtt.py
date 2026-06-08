@@ -300,9 +300,17 @@ class MQTTOutput:
         if self._client is None:
             await self._connect()   # raises aiomqtt.MqttError on failure
         assert self._client is not None
-        await self._client.publish(
-            self._topic("heartbeat"), "", qos=self._qos_heartbeat, retain=False
-        )
+        try:
+            await self._client.publish(
+                self._topic("heartbeat"), "", qos=self._qos_heartbeat, retain=False
+            )
+        except aiomqtt.MqttError:
+            # The connection is dead (e.g. the host slept and the socket was
+            # silently dropped). Discard the stale client so the next heartbeat
+            # reconnects via _connect(); otherwise we keep publishing into a
+            # broken connection forever and never recover.
+            await self._disconnect(publish_offline=False)
+            raise
 
     async def send(self, event: OngwatchEvent) -> SendStatus:
         if self._permanent_error is not None:

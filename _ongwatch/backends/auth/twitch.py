@@ -42,6 +42,34 @@ USER_SCOPES = TIOScopes([
 ])
 
 
+def _auth_callback_domain(args: argparse.Namespace, creds: Dict[str, str]) -> str:
+    return (
+        getattr(args, "auth_callback_domain", None)
+        or creds.get("auth_callback_domain")
+        or creds.get("auth_host")
+        or "localhost"
+    )
+
+
+def _auth_callback_port(args: argparse.Namespace, creds: Dict[str, str]) -> int:
+    raw_port = (
+        getattr(args, "auth_callback_port", None)
+        or creds.get("auth_callback_port")
+        or creds.get("auth_port")
+        or 4343
+    )
+
+    try:
+        port = int(raw_port)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Twitch auth callback port must be an integer") from exc
+
+    if not 1 <= port <= 65535:
+        raise ValueError("Twitch auth callback port must be between 1 and 65535")
+
+    return port
+
+
 def _tio_tokens_path(env: str) -> Path:
     return Path.cwd() / f".tio.tokens.{env}.json"
 
@@ -53,8 +81,8 @@ async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: l
     env: str = args.environment
     tokens_path = _tio_tokens_path(env)
 
-    host = creds.get("auth_host", "localhost")
-    port = int(creds.get("auth_port", 4343))
+    host = _auth_callback_domain(args, creds)
+    port = _auth_callback_port(args, creds)
     domain = creds.get("auth_domain")  # optional; enables https + external URL
 
     adapter: AiohttpAdapter[Any] = AiohttpAdapter(host=host, port=port, domain=domain)
@@ -76,11 +104,7 @@ async def auth(args: argparse.Namespace, creds: Dict[str, str] | None, logger: l
         adapter=adapter,
     )
 
-    if domain:
-        base = domain if domain.startswith("http") else f"https://{domain}"
-    else:
-        base = f"http://{host}:{port}"
-    visit_url = f"{base}/oauth?scopes={USER_SCOPES.urlsafe()}"
+    visit_url = adapter.get_authorization_url(scopes=USER_SCOPES)
 
     print(f"\nVisit this URL in your browser to authorize:\n  {visit_url}\n")
 

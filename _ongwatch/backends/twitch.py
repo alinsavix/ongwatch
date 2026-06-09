@@ -285,7 +285,7 @@ class OngWatch_Twitch(twitchio.AutoClient):
             _save_conduit_id(self._conduit_id_path, conduit_id)
 
     async def event_ready(self) -> None:
-        self.logger.info("Client is ready")
+        self.logger.info("Twitch backend online and ready")
 
     async def event_stream_online(self, payload: StreamOnline) -> None:
         self.logger.debug("Stream online received")

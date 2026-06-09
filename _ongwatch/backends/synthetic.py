@@ -156,6 +156,7 @@ async def start(
         f"in {_STARTUP_DELAY:.0f}s"
     )
     await asyncio.sleep(_STARTUP_DELAY)
+    logger.info("Synthetic backend online")
 
     for event in fixtures:
         dispatcher.emit(event)

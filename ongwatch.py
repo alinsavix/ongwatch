@@ -15,12 +15,12 @@ from typing import Any, cast
 
 import _ongwatch.backends as backends
 from _ongwatch.backends import BackendAuthHandler, BackendStartHandler
-from _ongwatch.dispatcher import (Dispatcher, OnErrorPolicy, OutputConfig,
-                                  QueueOverflowPolicy)
+from _ongwatch.config import (as_config_section, enabled_names, get_config,
+                              get_credentials, output_handler_config,
+                              parse_int, parse_output_config)
+from _ongwatch.dispatcher import Dispatcher, OutputConfig
 from _ongwatch.outputs import get_output
-from _ongwatch.util import get_credentials
 
-import toml
 from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
@@ -35,15 +35,6 @@ _BACKEND_RESTART_MAX:    int   = 5       # restarts within the window
 _BACKEND_BACKOFF_BASE:   float = 1.0     # initial backoff in seconds
 _BACKEND_BACKOFF_MAX:    float = 60.0    # maximum backoff in seconds
 
-_COMMON_OUTPUT_CONFIG_KEYS = {
-    "enabled",
-    "on_error",
-    "queue_max_size",
-    "queue_overflow",
-    "circuit_break_cooldown",
-    "circuit_break_flush_queue",
-    "max_retries",
-}
 
 @dataclass
 class BackendSpec:
@@ -137,149 +128,12 @@ async def do_auth_flow(args: argparse.Namespace, backend: str, logger: logging.L
     return 0 if await authfunc(args, creds, logging.getLogger(args.auth)) else 1
 
 
-def _as_config_section(value: Any, section_name: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ValueError(f"Config section [{section_name}] must be a table")
-    return value
-
-
-def _parse_bool(value: Any, key: str, output_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    raise ValueError(f"Output '{output_name}' config value '{key}' must be a boolean")
-
-
-def _parse_int(
-    value: Any,
-    key: str,
-    output_name: str,
-    *,
-    min_value: int | None = None,
-    max_value: int | None = None,
-) -> int:
-    if isinstance(value, bool):
-        raise ValueError(f"Output '{output_name}' config value '{key}' must be an integer")
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Output '{output_name}' config value '{key}' must be an integer"
-        ) from exc
-    if min_value is not None and parsed < min_value:
-        raise ValueError(
-            f"Output '{output_name}' config value '{key}' must be >= {min_value}"
-        )
-    if max_value is not None and parsed > max_value:
-        raise ValueError(
-            f"Output '{output_name}' config value '{key}' must be <= {max_value}"
-        )
-    return parsed
-
-
-def _parse_float(
-    value: Any,
-    key: str,
-    output_name: str,
-    *,
-    min_value: float | None = None,
-) -> float:
-    if isinstance(value, bool):
-        raise ValueError(f"Output '{output_name}' config value '{key}' must be a number")
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Output '{output_name}' config value '{key}' must be a number"
-        ) from exc
-    if min_value is not None and parsed < min_value:
-        raise ValueError(
-            f"Output '{output_name}' config value '{key}' must be >= {min_value}"
-        )
-    return parsed
-
-
-def _parse_output_config(output_name: str, cfg: dict[str, Any]) -> OutputConfig:
-    on_error_raw = cfg.get("on_error", OnErrorPolicy.QUEUE)
-    try:
-        on_error = OnErrorPolicy(on_error_raw)
-    except ValueError as exc:
-        raise ValueError(
-            f"Output '{output_name}' config value 'on_error' must be 'queue' or 'drop'"
-        ) from exc
-
-    queue_overflow_raw = cfg.get("queue_overflow", QueueOverflowPolicy.DROP_OLDEST)
-    try:
-        queue_overflow = QueueOverflowPolicy(queue_overflow_raw)
-    except ValueError as exc:
-        raise ValueError(
-            "Output "
-            f"'{output_name}' config value 'queue_overflow' must be "
-            "'drop_oldest', 'drop_newest', or 'circuit_break'"
-        ) from exc
-
-    output_config = OutputConfig(
-        on_error=on_error,
-        queue_max_size=_parse_int(
-            cfg.get("queue_max_size", 0), "queue_max_size", output_name, min_value=0
-        ),
-        queue_overflow=queue_overflow,
-        circuit_break_cooldown=_parse_float(
-            cfg.get("circuit_break_cooldown", 300.0),
-            "circuit_break_cooldown",
-            output_name,
-            min_value=0.0,
-        ),
-        circuit_break_flush_queue=_parse_bool(
-            cfg.get("circuit_break_flush_queue", False),
-            "circuit_break_flush_queue",
-            output_name,
-        ),
-        max_retries=_parse_int(
-            cfg.get("max_retries", 3), "max_retries", output_name, min_value=0
-        ),
-    )
-
-    return output_config
-
-
-def _output_handler_config(cfg: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in cfg.items()
-        if key not in _COMMON_OUTPUT_CONFIG_KEYS
-    }
-
-
-# FIXME: can we simplify this?
-def _enabled_names(
-    configured: dict[str, Any],
-    enable_names: list[str],
-    disable_names: list[str],
-    section_name: str,
-) -> list[str]:
-    if enable_names and enable_names != ["all"]:
-        enabled_names = enable_names
-    else:
-        enabled_names = []
-        for name, cfg in configured.items():
-            cfg_section = _as_config_section(cfg, f"{section_name}.{name}")
-            enabled = cfg_section.get("enabled", True)
-            if not isinstance(enabled, bool):
-                raise ValueError(
-                    f"Config value '{section_name}.{name}.enabled' must be a boolean"
-                )
-            if enabled:
-                enabled_names.append(name)
-
-    return [name for name in enabled_names if name not in disable_names]
-
-
 def _load_backend_specs(
     config: dict[str, Any],
     args: argparse.Namespace,
 ) -> list[BackendSpec]:
-    environment_cfg = _as_config_section(config.get(args.environment, {}), args.environment)
-    backends_cfg = _as_config_section(
+    environment_cfg = as_config_section(config.get(args.environment, {}), args.environment)
+    backends_cfg = as_config_section(
         environment_cfg.get("backends", {}),
         f"{args.environment}.backends",
     )
@@ -291,7 +145,7 @@ def _load_backend_specs(
             f"add at least one [{args.environment}.backends.<name>] section"
         )
 
-    enabled_backends = _enabled_names(
+    enabled_backends = enabled_names(
         backends_cfg,
         args.enable_backend,
         args.disable_backend,
@@ -350,12 +204,12 @@ def _load_outputs(
     disable_output: list[str],
     debug_output: list[str],
 ) -> tuple[list[tuple[str, Any, OutputConfig]], list[Any]]:
-    environment_cfg = _as_config_section(config.get(environment, {}), environment)
-    outputs_cfg = _as_config_section(
+    environment_cfg = as_config_section(config.get(environment, {}), environment)
+    outputs_cfg = as_config_section(
         environment_cfg.get("outputs", {}),
         f"{environment}.outputs",
     )
-    enabled_outputs = _enabled_names(
+    enabled_outputs = enabled_names(
         outputs_cfg,
         enable_output,
         disable_output,
@@ -366,17 +220,17 @@ def _load_outputs(
     instances: list[Any] = []
 
     for output_name in enabled_outputs:
-        env_cfg = _as_config_section(
+        env_cfg = as_config_section(
             outputs_cfg.get(output_name, {}),
             f"{environment}.outputs.{output_name}",
         )
-        output_config = _parse_output_config(output_name, env_cfg)
+        output_config = parse_output_config(output_name, env_cfg)
 
         logging.info(
             f"loading config for '{environment}.{output_name}' from {config_file}")
         try:
             module = get_output(output_name)
-            handler_cfg = _output_handler_config(env_cfg)
+            handler_cfg = output_handler_config(env_cfg)
             if "validate_config" in dir(module):
                 module.validate_config(handler_cfg)
             output = module.create(env_cfg)
@@ -400,7 +254,7 @@ def _load_outputs(
 async def async_main(args: argparse.Namespace) -> int:
     config: dict[str, Any] = {}
     if args.config_file.exists():
-        config = dict(toml.load(args.config_file))
+        config = get_config(args.config_file)
     else:
         logging.error(f"Config file {args.config_file} not found")
         return 1
@@ -408,8 +262,8 @@ async def async_main(args: argparse.Namespace) -> int:
     logging.info("Ongwatch is in startup")
 
     try:
-        dispatcher_section = _as_config_section(config.get("dispatcher", {}), "dispatcher")
-        heartbeat_interval = _parse_int(
+        dispatcher_section = as_config_section(config.get("dispatcher", {}), "dispatcher")
+        heartbeat_interval = parse_int(
             dispatcher_section.get("heartbeat_interval", 60),
             "heartbeat_interval",
             "dispatcher",

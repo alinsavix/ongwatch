@@ -1,13 +1,10 @@
 import datetime
-import logging
 import sys
 import time
-from pathlib import Path
 from typing import Any, Dict, cast
 
 import aiohttp
 import pytz
-import toml
 from tdvutil import ppretty
 
 
@@ -39,18 +36,3 @@ async def get_json_url(url: str) -> Dict[str, Any]:
 
         # else
         return cast(Dict[str, Any], await response.json())
-
-
-def get_credentials(cfgfile: Path, subsystem: str, environment: str) -> Dict[str, str] | None:
-    config = toml.load(cfgfile)
-
-    try:
-        return cast(Dict[str, str], config[environment][subsystem])
-    except KeyError:
-        logging.warning(f"no credentials found for '{environment}.{subsystem}'")
-        return None
-
-
-def get_config(cfgfile: Path) -> Dict[str, Any]:
-    """Load and return the full ongwatch.conf config as a dict."""
-    return dict(toml.load(cfgfile))

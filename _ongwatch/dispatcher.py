@@ -103,6 +103,9 @@ class _OutputState:
         self._worker_task: asyncio.Task[None] | None = None
         self._retry_counts: dict[int, int] = {}  # id(event) -> attempt count
         self._draining: bool = False
+        # Heartbeat health: None = not yet probed, True = online, False = down.
+        # Drives the online/offline/back-online transition logging.
+        self._online: bool | None = None
         self._queue: deque[OngwatchEvent] | None = (
             deque() if config.on_error == OnErrorPolicy.QUEUE else None
         )
@@ -348,8 +351,14 @@ class Dispatcher:
 
     async def _heartbeat(self) -> None:
         """Periodic task: probe all outputs and drive circuit-breaker recovery."""
+        # Probe immediately on startup so each output's online/offline status
+        # is logged promptly, then settle into the configured interval.
+        first = True
         while True:
-            await asyncio.sleep(self._heartbeat_interval)
+            if first:
+                first = False
+            else:
+                await asyncio.sleep(self._heartbeat_interval)
             now = datetime.now(tz=timezone.utc)
             for state in self._states:
                 if isinstance(state.circuit, _Open):
@@ -359,6 +368,7 @@ class Dispatcher:
                             state.circuit = _Closed()
                             state.stats.heartbeats_ok += 1
                             state.stats.last_heartbeat_at = now
+                            state._online = True
                             log.info("Output %r circuit recovered after probe", state.name)
                             # Re-start worker if it exited during the open period
                             if (
@@ -375,6 +385,7 @@ class Dispatcher:
                             )
                             state.circuit = _Open(retry_at=new_retry)
                             state.stats.heartbeats_failed += 1
+                            state._online = False
                             log.warning(
                                 "Output %r probe failed, next attempt after %s",
                                 state.name, new_retry.isoformat(),
@@ -389,8 +400,23 @@ class Dispatcher:
                         await state.output.heartbeat()
                         state.stats.heartbeats_ok += 1
                         state.stats.last_heartbeat_at = now
+                        self._record_online(state)
                     except Exception as exc:
                         state.stats.heartbeats_failed += 1
-                        log.warning(
-                            "Output %r heartbeat failed: %s", state.name, exc
-                        )
+                        self._record_offline(state, exc)
+
+    def _record_online(self, state: _OutputState) -> None:
+        """Log a transition to a healthy output; no-op if already online."""
+        if state._online is None:
+            log.info("Output %r is online", state.name)
+        elif state._online is False:
+            log.info("Output %r is back online", state.name)
+        state._online = True
+
+    def _record_offline(self, state: _OutputState, exc: BaseException) -> None:
+        """Log a transition to an unhealthy output, and keep warning while down."""
+        if state._online is False:
+            log.warning("Output %r still offline: %s", state.name, exc)
+        else:
+            log.warning("Output %r is offline: %s", state.name, exc)
+        state._online = False

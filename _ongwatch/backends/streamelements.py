@@ -64,7 +64,7 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
         self.logger.warning(f'disconnect reason: {reason}')
 
     async def on_authenticated(self, data: Any) -> None:
-        self.logger.info(f"Authenticated: {data}")
+        self.logger.info(f"Streamelements backend online (authenticated: {data})")
 
     async def on_connect_error(self, data: Any) -> None:
         self.logger.error("The connection failed!")

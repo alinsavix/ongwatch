@@ -58,7 +58,7 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
         super().__init__(namespace)
 
     async def on_connect(self) -> None:
-        self.logger.info('connection established')
+        self.logger.info("Streamlabs backend online (connection established)")
 
     async def on_disconnect(self, reason: str = "<no reason>") -> None:
         self.logger.warning(f'disconnect reason: {reason}')

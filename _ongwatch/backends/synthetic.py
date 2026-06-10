@@ -43,11 +43,11 @@ def _fixtures() -> list[OngwatchEvent]:
         ),
         CashSupportEvent(
             timestamp=now, backend="synthetic", raw=None,
-            username="test_tipper", amount=10.00, kind="tip", comment="Great stream!",
+            username="test_tipper", amount_cents=1000, kind="tip", comment="Great stream!",
         ),
         CashSupportEvent(
             timestamp=now, backend="synthetic", raw=None,
-            username="test_cheerer", amount=1.00, kind="bits", comment=None,
+            username="test_cheerer", amount_cents=100, kind="bits", comment=None,
         ),
         SubscriptionEvent(
             timestamp=now, backend="synthetic", raw=None,
@@ -125,7 +125,7 @@ def _fixtures() -> list[OngwatchEvent]:
         ),
         CharityDonationEvent(
             timestamp=now, backend="synthetic", raw=None,
-            username="test_donor", amount=25.00, currency="USD",
+            username="test_donor", amount_cents=2500, currency="USD",
             campaign_name="Test Charity Run",
         ),
         GoalEvent(

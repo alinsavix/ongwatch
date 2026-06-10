@@ -20,7 +20,7 @@ class OngwatchEvent:
 @dataclass(kw_only=True)
 class CashSupportEvent(OngwatchEvent):
     username: str
-    amount: float
+    amount_cents: int      # integer cents, USD assumed (1 bit == 1 cent)
     kind: str              # "bits" / "tip" / "donation"
     comment: str | None = None
 
@@ -116,7 +116,7 @@ class PredictionEvent(OngwatchEvent):
 @dataclass(kw_only=True)
 class CharityDonationEvent(OngwatchEvent):
     username: str
-    amount: float
+    amount_cents: int      # integer cents, USD assumed
     currency: str
     campaign_name: str
 

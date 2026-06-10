@@ -172,6 +172,9 @@ class Dispatcher:
         self._heartbeat_interval = heartbeat_interval
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._accepting = True
+        # The event loop holds only weak refs to tasks; keep fire-and-forget
+        # sends referenced here so they can't be garbage-collected mid-flight.
+        self._send_tasks: set[asyncio.Task[None]] = set()
 
     # ------------------------------------------------------------------
     # Public API
@@ -188,7 +191,9 @@ class Dispatcher:
                 log.debug("Circuit open for %r, dropping event", state.name)
                 continue
             if state.config.on_error == OnErrorPolicy.DROP:
-                asyncio.create_task(self._fire_and_forget(state, event))
+                task = asyncio.create_task(self._fire_and_forget(state, event))
+                self._send_tasks.add(task)
+                task.add_done_callback(self._send_tasks.discard)
             else:
                 state.enqueue(event)
 

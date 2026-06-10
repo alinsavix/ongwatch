@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import datetime, timezone
 from typing import IO, Any
@@ -29,11 +30,16 @@ def _ts(dt: datetime) -> str:
 
 
 class ConsoleOutput:
-    def __init__(self, stream: IO[str] | None = None) -> None:
+    def __init__(
+        self,
+        stream: IO[str] | None = None,
+        logger: logging.Logger | None = None,
+    ) -> None:
         self._stream = stream or sys.stdout
+        self._log = logger or logging.getLogger("console")
 
     async def start(self) -> None:
-        pass
+        self._log.debug("console output started")
 
     async def stop(self) -> None:
         pass
@@ -51,14 +57,17 @@ class ConsoleOutput:
         ts = _ts(event.timestamp)
 
         if isinstance(event, CashSupportEvent):
+            dollars = event.amount_cents / 100
             if event.kind == "bits":
-                bits = int(event.amount * 100)
-                msg = f"[{ts}] BITS    {event.username} cheered {bits} bits (${event.amount:.2f})"
+                msg = (
+                    f"[{ts}] BITS    {event.username} cheered"
+                    f" {event.amount_cents} bits (${dollars:.2f})"
+                )
                 if event.comment:
                     msg += f": {event.comment}"
             else:
                 kind_label = "TIP" if event.kind in ("tip", "donation") else event.kind.upper()
-                msg = f"[{ts}] {kind_label:<7} {event.username} tipped ${event.amount:.2f}"
+                msg = f"[{ts}] {kind_label:<7} {event.username} tipped ${dollars:.2f}"
                 if event.comment:
                     msg += f": {event.comment}"
             self._write(msg, event.is_test)
@@ -132,9 +141,10 @@ class ConsoleOutput:
             self._write(f'[{ts}] SONG REQUEST from {requester}: "{event.title}"', event.is_test)
             return SendStatus.HANDLED
 
+        self._log.debug("rejecting unhandled event type %s", type(event).__name__)
         return SendStatus.REJECTED
 
 
-def create(config: dict[str, Any]) -> ConsoleOutput:
+def create(config: dict[str, Any], logger: logging.Logger) -> ConsoleOutput:
     """Factory called by ongwatch.py when loading outputs from ongwatch.conf."""
-    return ConsoleOutput()
+    return ConsoleOutput(logger=logger)

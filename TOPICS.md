@@ -82,7 +82,7 @@ Every message published by ongwatch uses this JSON envelope:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "timestamp": "2026-04-18T20:00:00Z",
   "backend": "twitch",
   "event_type": "cash_support",
@@ -93,7 +93,7 @@ Every message published by ongwatch uses this JSON envelope:
 
 | Field | Description |
 |---|---|
-| `v` | Payload schema version. Additive changes (new fields) do not increment this. Breaking changes (removed/renamed fields, restructured `data`) increment to `2`. |
+| `v` | Payload schema version. Additive changes (new fields) do not increment this. Breaking changes (removed/renamed fields, restructured `data`) increment it. v2: `cash_support` `amount` (float dollars) became `amount_cents` (integer, USD assumed). |
 | `timestamp` | ISO 8601 UTC timestamp of the event. |
 | `backend` | Source backend: `twitch`, `streamelements`, or `streamlabs`. |
 | `event_type` | Matches the final path segment of the topic (e.g. `cash_support`, `subscription`). |
@@ -113,9 +113,10 @@ crash or lost connection, the broker fires the LWT automatically.
 
 ### `cash_support`
 ```json
-{ "username": "...", "amount": 5.00, "kind": "tip", "comment": "..." }
+{ "username": "...", "amount_cents": 500, "kind": "tip", "comment": "..." }
 ```
-`kind`: `bits`, `tip`, `donation`
+`kind`: `bits`, `tip`, `donation`. `amount_cents` is integer cents (USD assumed);
+for bits, 1 bit == 1 cent, so it is also the bits count.
 
 ### `subscription`
 ```json

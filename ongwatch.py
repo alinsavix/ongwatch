@@ -21,7 +21,6 @@ from _ongwatch.config import (as_config_section, enabled_names, get_config,
 from _ongwatch.dispatcher import Dispatcher, OutputConfig
 from _ongwatch.outputs import get_output
 
-from tdvutil import ppretty
 from tdvutil.argparse import CheckFile
 
 os.environ["PYTHON_COLORS"] = "0"
@@ -228,20 +227,21 @@ def _load_outputs(
 
         logging.info(
             f"loading config for '{environment}.{output_name}' from {config_file}")
-        try:
-            module = get_output(output_name)
-            handler_cfg = output_handler_config(env_cfg)
-            if "validate_config" in dir(module):
-                module.validate_config(handler_cfg)
-            output = module.create(env_cfg)
-        except Exception as exc:
-            raise ValueError(f"failed to load output '{output_name}': {exc}") from exc
 
         logger = logging.getLogger(output_name)
         if output_name in debug_output or "all" in debug_output:
             logger.setLevel(logging.DEBUG)
         else:
             logger.setLevel(logging.INFO)
+
+        try:
+            module = get_output(output_name)
+            handler_cfg = output_handler_config(env_cfg)
+            if "validate_config" in dir(module):
+                module.validate_config(handler_cfg)
+            output = module.create(env_cfg, logger)
+        except Exception as exc:
+            raise ValueError(f"failed to load output '{output_name}': {exc}") from exc
 
         name = f"{output_name}.{environment}"
         triples.append((name, output, output_config))
@@ -281,8 +281,6 @@ async def async_main(args: argparse.Namespace) -> int:
 
     logging.info(f"Enabled backends: {' '.join(spec.name for spec in backend_specs)}")
 
-    # FIXME: We should probably configure loggers to pass to outputs, like we
-    # do for backends
     dispatcher = Dispatcher(output_triples, heartbeat_interval=heartbeat_interval)
     dispatcher_started = False
     started_outputs: list[Any] = []
@@ -333,8 +331,15 @@ async def async_main(args: argparse.Namespace) -> int:
             # SIGINT won't interrupt select() — the loop can block for up to the
             # heartbeat interval before noticing Ctrl+C.  Wire up the loop's own
             # self-pipe as the wakeup fd so signals wake select() immediately.
+            # _csock is undocumented loop internals, so it may disappear in a
+            # future Python release; warn instead of silently degrading.
             if hasattr(loop, '_csock'):
                 signal.set_wakeup_fd(loop._csock.fileno())
+            else:
+                logging.warning(
+                    "Event loop has no _csock attribute; Ctrl+C response may be "
+                    "delayed by up to the heartbeat interval"
+                )
 
         # Supervisor tasks return normally only on permanent failure; they
         # propagate CancelledError on shutdown.  Keep looping until a shutdown
@@ -432,7 +437,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--environment", "--env",
         type=str,
-        default="test",
+        default="dev",
         help="environment to use"
     )
 

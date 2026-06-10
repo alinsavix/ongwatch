@@ -16,7 +16,7 @@ from ..events import CashSupportEvent
 # ---------------------------------------------------------------------------
 
 def _map_tip_event(event: Dict[str, Any]) -> CashSupportEvent:
-    amount = float(event['data'].get("amount", 0.0))
+    amount_cents = round(float(event['data'].get("amount", 0.0)) * 100)
     user = event['data'].get("username", "UnknownUser")
     is_mock = event.get("isMock", False)
     return CashSupportEvent(
@@ -24,7 +24,7 @@ def _map_tip_event(event: Dict[str, Any]) -> CashSupportEvent:
         backend="streamelements",
         raw=event,
         username=user,
-        amount=amount,
+        amount_cents=amount_cents,
         kind="tip",
         is_test=is_mock,
     )
@@ -76,7 +76,7 @@ class OngWatch_SE(socketio.AsyncClientNamespace):
         t = event['type']
         if t == "tip":
             evt = _map_tip_event(event)
-            self.logger.info(f"Tip: {evt.amount} from {evt.username}")
+            self.logger.info(f"Tip: ${evt.amount_cents / 100:.2f} from {evt.username}")
             self.dispatcher.emit(evt)
         else:
             self.logger.debug(f"Ignoring event of type {t}: {event}")

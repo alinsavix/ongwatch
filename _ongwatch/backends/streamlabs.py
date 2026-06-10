@@ -17,7 +17,7 @@ from ..events import CashSupportEvent
 
 def _map_donation_event(event: Dict[str, Any]) -> CashSupportEvent:
     msg = event["message"][0]
-    amount = float(msg.get("amount", 0.0))
+    amount_cents = round(float(msg.get("amount", 0.0)) * 100)
     user = msg.get("from", "UnknownUser")
     is_test = msg.get("isTest", False)
     return CashSupportEvent(
@@ -25,7 +25,7 @@ def _map_donation_event(event: Dict[str, Any]) -> CashSupportEvent:
         backend="streamlabs",
         raw=event,
         username=user,
-        amount=amount,
+        amount_cents=amount_cents,
         kind="donation",
         is_test=is_test,
     )
@@ -74,7 +74,7 @@ class OngWatch_SL(socketio.AsyncClientNamespace):
 
         if t == "donation":
             evt = _map_donation_event(event)
-            self.logger.info(f"Donation: {evt.amount} from {evt.username}")
+            self.logger.info(f"Donation: ${evt.amount_cents / 100:.2f} from {evt.username}")
             self.dispatcher.emit(evt)
         else:
             self.logger.debug(f"Ignoring event of type {t}: {event}")

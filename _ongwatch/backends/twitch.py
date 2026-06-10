@@ -47,7 +47,7 @@ def _map_bits_event(payload: ChannelBitsUse) -> CashSupportEvent:
         backend="twitch",
         raw=payload,
         username=username,
-        amount=payload.bits / 100.0,
+        amount_cents=payload.bits,  # 1 bit == 1 cent
         kind="bits",
     )
 

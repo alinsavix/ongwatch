@@ -13,8 +13,6 @@ from typing import Any
 from ..events import OngwatchEvent
 from . import SendStatus
 
-log = logging.getLogger(__name__)
-
 _CRASH_AFTER: int = 3
 
 
@@ -39,12 +37,17 @@ def validate_config(config: dict[str, Any]) -> None:
 class TestCrashOutput:
     """Handles the first ``crash_after`` events then raises on every subsequent send()."""
 
-    def __init__(self, crash_after: int = _CRASH_AFTER) -> None:
+    def __init__(
+        self,
+        crash_after: int = _CRASH_AFTER,
+        logger: logging.Logger | None = None,
+    ) -> None:
         self._crash_after = crash_after
         self._send_count = 0
+        self._log = logger or logging.getLogger("test_crash")
 
     async def start(self) -> None:
-        log.info(
+        self._log.info(
             "test_crash output starting; will raise on send() after %d event(s)",
             self._crash_after,
         )
@@ -64,6 +67,9 @@ class TestCrashOutput:
         pass
 
 
-def create(config: dict[str, Any]) -> TestCrashOutput:
+def create(config: dict[str, Any], logger: logging.Logger) -> TestCrashOutput:
     """Factory called by ongwatch.py when loading outputs from ongwatch.conf."""
-    return TestCrashOutput(crash_after=int(config.get("crash_after", _CRASH_AFTER)))
+    return TestCrashOutput(
+        crash_after=int(config.get("crash_after", _CRASH_AFTER)),
+        logger=logger,
+    )

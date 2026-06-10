@@ -135,11 +135,8 @@ ignore = [
     "E303",  # too many blank lines
     "E402",  # module level import not at top of file
     "E501",  # line too long
-    "F401",  # imported but unused
     "F403",  # 'from module import *' used
     "F722",  # syntax error in forward annotation
-    "F821",  # undefined name
-    "F841",  # local variable assigned but never used
     "S101",  # allow "assert" (we use it for type narrowing)
 ]
 

@@ -5,7 +5,6 @@ from typing import Any, Dict, cast
 
 import aiohttp
 import pytz
-from tdvutil import ppretty
 
 
 def out(msg: str) -> None:

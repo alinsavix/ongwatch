@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
@@ -19,15 +20,15 @@ from . import SendStatus
 
 _SCHEMA: list[str] = [
     """CREATE TABLE IF NOT EXISTS cash_support (
-        id        INTEGER PRIMARY KEY,
-        timestamp TEXT    NOT NULL,
-        backend   TEXT    NOT NULL,
-        is_test   INTEGER NOT NULL DEFAULT 0,
-        username  TEXT    NOT NULL,
-        amount    REAL    NOT NULL,
-        kind      TEXT    NOT NULL,
-        comment   TEXT,
-        raw       TEXT
+        id           INTEGER PRIMARY KEY,
+        timestamp    TEXT    NOT NULL,
+        backend      TEXT    NOT NULL,
+        is_test      INTEGER NOT NULL DEFAULT 0,
+        username     TEXT    NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        kind         TEXT    NOT NULL,
+        comment      TEXT,
+        raw          TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS subscription (
         id        INTEGER PRIMARY KEY,
@@ -112,7 +113,9 @@ _SCHEMA: list[str] = [
     )""",
 ]
 
-# Migrations for existing databases that predate the is_test column.
+# Migrations for existing databases. Each statement runs on every startup
+# with OperationalError suppressed, so each must be a no-op (i.e. fail
+# cleanly) once it has been applied or when it doesn't apply at all.
 _MIGRATIONS: list[str] = [
     "ALTER TABLE cash_support  ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE subscription   ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0",
@@ -128,6 +131,14 @@ _MIGRATIONS: list[str] = [
         (id, timestamp, backend, is_test, from_channel, viewer_count, raw)
         SELECT id, timestamp, backend, is_test, from_channel, viewer_count, raw
         FROM raid""",
+    # Money model change: float dollars ("amount") -> integer cents
+    # ("amount_cents"). Backfill from the old column, then drop it so the
+    # NOT NULL constraint on it can't break future inserts.
+    "ALTER TABLE cash_support ADD COLUMN amount_cents INTEGER",
+    """UPDATE cash_support
+        SET amount_cents = CAST(ROUND(amount * 100) AS INTEGER)
+        WHERE amount_cents IS NULL""",
+    "ALTER TABLE cash_support DROP COLUMN amount",
 ]
 
 
@@ -168,11 +179,13 @@ def _raw(value: Any) -> str | None:
 # ---------------------------------------------------------------------------
 
 class SQLiteOutput:
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, logger: logging.Logger | None = None) -> None:
         self._path = path
         self._db: aiosqlite.Connection | None = None
+        self._log = logger or logging.getLogger("sqlite")
 
     async def start(self) -> None:
+        self._log.info("sqlite output using database %s", self._path)
         self._db = await aiosqlite.connect(self._path)
         await self._db.execute("PRAGMA journal_mode=WAL")
         for stmt in _SCHEMA:
@@ -199,13 +212,14 @@ class SQLiteOutput:
         assert self._db is not None
         ts = _ts(event.timestamp)
         raw = _raw(event.raw)
+        self._log.debug("send: %s", type(event).__name__)
 
         if isinstance(event, CashSupportEvent):
             await self._db.execute(
                 "INSERT INTO cash_support"
-                " (timestamp, backend, is_test, username, amount, kind, comment, raw)"
+                " (timestamp, backend, is_test, username, amount_cents, kind, comment, raw)"
                 " VALUES (?,?,?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.username, event.amount,
+                (ts, event.backend, int(event.is_test), event.username, event.amount_cents,
                  event.kind, event.comment, raw),
             )
             await self._db.commit()
@@ -291,9 +305,10 @@ class SQLiteOutput:
             await self._db.commit()
             return SendStatus.HANDLED
 
+        self._log.debug("rejecting unhandled event type %s", type(event).__name__)
         return SendStatus.REJECTED
 
 
-def create(config: dict[str, Any]) -> SQLiteOutput:
+def create(config: dict[str, Any], logger: logging.Logger) -> SQLiteOutput:
     """Factory called by ongwatch.py when loading outputs from ongwatch.conf."""
-    return SQLiteOutput(path=config.get("path", ":memory:"))
+    return SQLiteOutput(path=config.get("path", ":memory:"), logger=logger)

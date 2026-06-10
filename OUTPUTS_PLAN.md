@@ -28,7 +28,7 @@ Subtypes are divided into **currently emitted** (backends already generate these
 
 | Class | Fields | Sources |
 |---|---|---|
-| `CashSupportEvent` | `username`, `amount: float`, `kind: str` ("bits"/"tip"/"donation"), `comment: str \| None` | bits (Twitch), tip (SE), donation (SL) |
+| `CashSupportEvent` | `username`, `amount_cents: int` (USD assumed; 1 bit == 1 cent), `kind: str` ("bits"/"tip"/"donation"), `comment: str \| None` | bits (Twitch), tip (SE), donation (SL) |
 | `SubscriptionEvent` | `username`, `tier: int` (1/2/3), `is_resub: bool`, `months: int \| None`, `message: str \| None` | Twitch sub/resub/prime upgrade |
 | `GiftSubEvent` | `gifter: str \| None` (None=anonymous), `recipients: list[str]`, `tier: int`, `count: int` | Twitch gift/community gift/pay-it-forward |
 | `RaidEvent` | `from_channel: str`, `viewer_count: int` | Twitch raid |
@@ -45,7 +45,7 @@ Subtypes are divided into **currently emitted** (backends already generate these
 | `ChannelPointRedemptionEvent` | `username`, `reward_title: str`, `reward_cost: int`, `user_input: str \| None`, `status: str` | `channel.channel_points_custom_reward_redemption.add` |
 | `PollEvent` | `kind: str` ("begin"/"progress"/"end"), `title: str`, `choices: list[dict]` ({title, votes}), `winning_choice: str \| None` | `channel.poll.*` |
 | `PredictionEvent` | `kind: str` ("begin"/"progress"/"locked"/"end"), `title: str`, `outcomes: list[dict]` ({title, users, channel_points}), `winning_outcome: str \| None` | `channel.prediction.*` |
-| `CharityDonationEvent` | `username`, `amount: float`, `currency: str`, `campaign_name: str` | `channel.charity_campaign.donate` |
+| `CharityDonationEvent` | `username`, `amount_cents: int`, `currency: str`, `campaign_name: str` | `channel.charity_campaign.donate` |
 | `GoalEvent` | `kind: str` ("begin"/"progress"/"end"), `goal_type: str`, `current: int`, `target: int` | `channel.goal.*` |
 | `ShoutoutEvent` | `kind: str` ("sent"/"received"), `channel: str`, `viewer_count: int \| None` | `channel.shoutout.*` |
 

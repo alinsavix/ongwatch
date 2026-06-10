@@ -9,8 +9,6 @@ from typing import Any
 import aiomqtt
 from aiomqtt.exceptions import MqttCodeError
 
-log = logging.getLogger(__name__)
-
 from ..events import (CashSupportEvent, GiftSubEvent, HypeTrainEvent,
                       OngwatchEvent, RaffleWinEvent, RaidIncomingEvent,
                       RaidOutgoingEvent, SongRequestEvent, StreamStateEvent,
@@ -172,7 +170,7 @@ def _raw_json(value: Any) -> Any:
 
 def _build_data(event: OngwatchEvent) -> dict[str, Any]:
     if isinstance(event, CashSupportEvent):
-        return {"username": event.username, "amount": event.amount,
+        return {"username": event.username, "amount_cents": event.amount_cents,
                 "kind": event.kind, "comment": event.comment}
     if isinstance(event, SubscriptionEvent):
         return {"username": event.username, "tier": event.tier,
@@ -197,8 +195,9 @@ def _build_data(event: OngwatchEvent) -> dict[str, Any]:
 
 
 def _envelope(event: OngwatchEvent, event_type: str, data: dict[str, Any]) -> str:
+    # v2: CashSupport "amount" (float dollars) became "amount_cents" (int)
     return json.dumps({
-        "v": 1,
+        "v": 2,
         "timestamp": _ts(event.timestamp),
         "backend": event.backend,
         "is_test": event.is_test,
@@ -213,7 +212,8 @@ def _envelope(event: OngwatchEvent, event_type: str, data: dict[str, Any]) -> st
 # ---------------------------------------------------------------------------
 
 class MQTTOutput:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any], logger: logging.Logger | None = None) -> None:
+        self._log = logger or logging.getLogger("mqtt")
         self._host: str = config.get("host", "localhost")
         self._port: int = int(config.get("port", 1883))
         self._channel: str = config["channel"]
@@ -267,6 +267,7 @@ class MQTTOutput:
                 raise self._permanent_error from exc
             raise
         self._client = client
+        self._log.debug("connected to %s:%d as %s", self._host, self._port, self._client_id)
         await client.publish(self._topic("presence"), "online", qos=1, retain=True)
 
     async def _disconnect(self, publish_offline: bool = True) -> None:
@@ -285,11 +286,11 @@ class MQTTOutput:
         try:
             await self._connect()
         except PermanentMQTTError:
-            log.error("MQTT: permanent connection failure", exc_info=True)
+            self._log.error("MQTT: permanent connection failure", exc_info=True)
             raise
         except aiomqtt.MqttError as exc:
-            log.warning("MQTT: could not connect to %s:%d — %s (will retry on heartbeat)",
-                        self._host, self._port, exc)
+            self._log.warning("MQTT: could not connect to %s:%d — %s (will retry on heartbeat)",
+                              self._host, self._port, exc)
 
     async def stop(self) -> None:
         await self._disconnect(publish_offline=True)
@@ -317,10 +318,12 @@ class MQTTOutput:
             return SendStatus.ERROR
 
         if self._client is None:
+            self._log.debug("not connected, deferring %s event", type(event).__name__)
             return SendStatus.TRANSIENT
 
         entry = _EVENT_MAP.get(type(event))
         if entry is None:
+            self._log.debug("rejecting unhandled event type %s", type(event).__name__)
             return SendStatus.REJECTED
 
         topic_suffix, event_type, retain, use_state_qos = entry
@@ -331,12 +334,14 @@ class MQTTOutput:
             await self._client.publish(
                 self._topic(topic_suffix), payload, qos=qos, retain=retain
             )
+            self._log.debug("published %s to %s", event_type, self._topic(topic_suffix))
             return SendStatus.HANDLED
-        except aiomqtt.MqttError:
+        except aiomqtt.MqttError as exc:
+            self._log.debug("publish to %s failed: %s", self._topic(topic_suffix), exc)
             await self._disconnect(publish_offline=False)
             return SendStatus.TRANSIENT
 
 
-def create(config: dict[str, Any]) -> MQTTOutput:
+def create(config: dict[str, Any], logger: logging.Logger) -> MQTTOutput:
     """Factory called by ongwatch.py when loading outputs from ongwatch.conf."""
-    return MQTTOutput(config)
+    return MQTTOutput(config, logger=logger)

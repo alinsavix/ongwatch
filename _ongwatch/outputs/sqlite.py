@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
@@ -175,6 +176,110 @@ def _raw(value: Any) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Per-event-type INSERT builders. Each returns (sql, params) for one row; the
+# shared timestamp and serialized raw payload are passed in. To support a new
+# event type, add a builder and a row in _INSERTS; unhandled types are REJECTED.
+# ---------------------------------------------------------------------------
+
+_Insert = tuple[str, tuple[Any, ...]]
+
+
+def _cash_insert(event: CashSupportEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO cash_support"
+        " (timestamp, backend, is_test, username, amount_cents, kind, comment, raw)"
+        " VALUES (?,?,?,?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.username, event.amount_cents,
+         event.kind, event.comment, raw),
+    )
+
+
+def _sub_insert(event: SubscriptionEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO subscription"
+        " (timestamp, backend, is_test, username, tier, is_resub, months, message, raw)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.username, event.tier,
+         int(event.is_resub), event.months, event.message, raw),
+    )
+
+
+def _giftsub_insert(event: GiftSubEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO gift_sub"
+        " (timestamp, backend, is_test, gifter, recipients, tier, count, raw)"
+        " VALUES (?,?,?,?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.gifter,
+         json.dumps(event.recipients), event.tier, event.count, raw),
+    )
+
+
+def _raid_incoming_insert(event: RaidIncomingEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO raid_incoming"
+        " (timestamp, backend, is_test, from_channel, viewer_count, raw)"
+        " VALUES (?,?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.from_channel, event.viewer_count, raw),
+    )
+
+
+def _raid_outgoing_insert(event: RaidOutgoingEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO raid_outgoing"
+        " (timestamp, backend, is_test, to_channel, viewer_count, raw)"
+        " VALUES (?,?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.to_channel, event.viewer_count, raw),
+    )
+
+
+def _stream_state_insert(event: StreamStateEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO stream_state (timestamp, backend, is_test, state, raw)"
+        " VALUES (?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.state, raw),
+    )
+
+
+def _hype_train_insert(event: HypeTrainEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO hype_train"
+        " (timestamp, backend, is_test, kind, level, total, raw)"
+        " VALUES (?,?,?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.kind, event.level, event.total, raw),
+    )
+
+
+def _song_request_insert(event: SongRequestEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO song_request"
+        " (timestamp, backend, is_test, title, requester, raw)"
+        " VALUES (?,?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.title, event.requester, raw),
+    )
+
+
+def _raffle_insert(event: RaffleWinEvent, ts: str, raw: str | None) -> _Insert:
+    return (
+        "INSERT INTO raffle_win (timestamp, backend, is_test, winner, raw)"
+        " VALUES (?,?,?,?,?)",
+        (ts, event.backend, int(event.is_test), event.winner, raw),
+    )
+
+
+_INSERTS: dict[type[OngwatchEvent], Callable[[Any, str, str | None], _Insert]] = {
+    CashSupportEvent:  _cash_insert,
+    SubscriptionEvent: _sub_insert,
+    GiftSubEvent:      _giftsub_insert,
+    RaidIncomingEvent: _raid_incoming_insert,
+    RaidOutgoingEvent: _raid_outgoing_insert,
+    StreamStateEvent:  _stream_state_insert,
+    HypeTrainEvent:    _hype_train_insert,
+    SongRequestEvent:  _song_request_insert,
+    RaffleWinEvent:    _raffle_insert,
+}
+
+
+# ---------------------------------------------------------------------------
 # SQLiteOutput
 # ---------------------------------------------------------------------------
 
@@ -210,103 +315,17 @@ class SQLiteOutput:
 
     async def send(self, event: OngwatchEvent) -> SendStatus:
         assert self._db is not None
-        ts = _ts(event.timestamp)
-        raw = _raw(event.raw)
         self._log.debug("send: %s", type(event).__name__)
 
-        if isinstance(event, CashSupportEvent):
-            await self._db.execute(
-                "INSERT INTO cash_support"
-                " (timestamp, backend, is_test, username, amount_cents, kind, comment, raw)"
-                " VALUES (?,?,?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.username, event.amount_cents,
-                 event.kind, event.comment, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
+        builder = _INSERTS.get(type(event))
+        if builder is None:
+            self._log.debug("rejecting unhandled event type %s", type(event).__name__)
+            return SendStatus.REJECTED
 
-        if isinstance(event, SubscriptionEvent):
-            await self._db.execute(
-                "INSERT INTO subscription"
-                " (timestamp, backend, is_test, username, tier, is_resub, months, message, raw)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.username, event.tier,
-                 int(event.is_resub), event.months, event.message, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        if isinstance(event, GiftSubEvent):
-            await self._db.execute(
-                "INSERT INTO gift_sub"
-                " (timestamp, backend, is_test, gifter, recipients, tier, count, raw)"
-                " VALUES (?,?,?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.gifter,
-                 json.dumps(event.recipients), event.tier, event.count, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        if isinstance(event, RaidIncomingEvent):
-            await self._db.execute(
-                "INSERT INTO raid_incoming"
-                " (timestamp, backend, is_test, from_channel, viewer_count, raw)"
-                " VALUES (?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.from_channel, event.viewer_count, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        if isinstance(event, RaidOutgoingEvent):
-            await self._db.execute(
-                "INSERT INTO raid_outgoing"
-                " (timestamp, backend, is_test, to_channel, viewer_count, raw)"
-                " VALUES (?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.to_channel, event.viewer_count, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        if isinstance(event, StreamStateEvent):
-            await self._db.execute(
-                "INSERT INTO stream_state (timestamp, backend, is_test, state, raw)"
-                " VALUES (?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.state, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        if isinstance(event, HypeTrainEvent):
-            await self._db.execute(
-                "INSERT INTO hype_train"
-                " (timestamp, backend, is_test, kind, level, total, raw)"
-                " VALUES (?,?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.kind, event.level, event.total, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        if isinstance(event, SongRequestEvent):
-            await self._db.execute(
-                "INSERT INTO song_request"
-                " (timestamp, backend, is_test, title, requester, raw)"
-                " VALUES (?,?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.title, event.requester, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        if isinstance(event, RaffleWinEvent):
-            await self._db.execute(
-                "INSERT INTO raffle_win (timestamp, backend, is_test, winner, raw)"
-                " VALUES (?,?,?,?,?)",
-                (ts, event.backend, int(event.is_test), event.winner, raw),
-            )
-            await self._db.commit()
-            return SendStatus.HANDLED
-
-        self._log.debug("rejecting unhandled event type %s", type(event).__name__)
-        return SendStatus.REJECTED
+        sql, params = builder(event, _ts(event.timestamp), _raw(event.raw))
+        await self._db.execute(sql, params)
+        await self._db.commit()
+        return SendStatus.HANDLED
 
 
 def create(config: dict[str, Any], logger: logging.Logger) -> SQLiteOutput:

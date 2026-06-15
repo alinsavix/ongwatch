@@ -2,8 +2,8 @@
 
 Not in OUTPUT_LIST; enable explicitly with --enable-output test_crash.
 
-Use this to exercise the dispatcher's exception-handling, retry logic, and
-circuit-breaker behaviour without needing a real output configured.
+Use this to exercise the dispatcher's exception-handling and retry logic
+without needing a real output configured.
 """
 from __future__ import annotations
 

@@ -11,8 +11,6 @@ COMMON_OUTPUT_CONFIG_KEYS = {
     "on_error",
     "queue_max_size",
     "queue_overflow",
-    "circuit_break_cooldown",
-    "circuit_break_flush_queue",
     "max_retries",
 }
 
@@ -36,12 +34,6 @@ def as_config_section(value: Any, section_name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"Config section [{section_name}] must be a table")
     return value
-
-
-def parse_bool(value: Any, key: str, output_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    raise ValueError(f"Output '{output_name}' config value '{key}' must be a boolean")
 
 
 def parse_int(
@@ -71,70 +63,26 @@ def parse_int(
     return parsed
 
 
-def parse_float(
-    value: Any,
-    key: str,
-    output_name: str,
-    *,
-    min_value: float | None = None,
-) -> float:
-    if isinstance(value, bool):
-        raise ValueError(f"Output '{output_name}' config value '{key}' must be a number")
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Output '{output_name}' config value '{key}' must be a number"
-        ) from exc
-    if min_value is not None and parsed < min_value:
-        raise ValueError(
-            f"Output '{output_name}' config value '{key}' must be >= {min_value}"
-        )
-    return parsed
-
-
 def parse_output_config(output_name: str, cfg: dict[str, Any]) -> OutputConfig:
-    on_error_raw = cfg.get("on_error", OnErrorPolicy.QUEUE)
-    try:
-        on_error = OnErrorPolicy(on_error_raw)
-    except ValueError as exc:
-        raise ValueError(
-            f"Output '{output_name}' config value 'on_error' must be 'queue' or 'drop'"
-        ) from exc
-
-    queue_overflow_raw = cfg.get("queue_overflow", QueueOverflowPolicy.DROP_OLDEST)
-    try:
-        queue_overflow = QueueOverflowPolicy(queue_overflow_raw)
-    except ValueError as exc:
-        raise ValueError(
-            "Output "
-            f"'{output_name}' config value 'queue_overflow' must be "
-            "'drop_oldest', 'drop_newest', or 'circuit_break'"
-        ) from exc
-
-    output_config = OutputConfig(
-        on_error=on_error,
-        queue_max_size=parse_int(
-            cfg.get("queue_max_size", 0), "queue_max_size", output_name, min_value=0
-        ),
-        queue_overflow=queue_overflow,
-        circuit_break_cooldown=parse_float(
-            cfg.get("circuit_break_cooldown", 300.0),
-            "circuit_break_cooldown",
-            output_name,
-            min_value=0.0,
-        ),
-        circuit_break_flush_queue=parse_bool(
-            cfg.get("circuit_break_flush_queue", False),
-            "circuit_break_flush_queue",
-            output_name,
-        ),
-        max_retries=parse_int(
-            cfg.get("max_retries", 3), "max_retries", output_name, min_value=0
-        ),
+    # parse_int already raises output-scoped messages for the numeric keys, so
+    # evaluate those first and let them surface unwrapped. The enum/range rules
+    # live in OutputConfig.__post_init__; we just prefix its error with the
+    # output name.
+    queue_max_size = parse_int(
+        cfg.get("queue_max_size", 0), "queue_max_size", output_name, min_value=0
     )
-
-    return output_config
+    max_retries = parse_int(
+        cfg.get("max_retries", 3), "max_retries", output_name, min_value=0
+    )
+    try:
+        return OutputConfig(
+            on_error=cfg.get("on_error", OnErrorPolicy.QUEUE),
+            queue_max_size=queue_max_size,
+            queue_overflow=cfg.get("queue_overflow", QueueOverflowPolicy.DROP_OLDEST),
+            max_retries=max_retries,
+        )
+    except ValueError as exc:
+        raise ValueError(f"Output '{output_name}' config: {exc}") from exc
 
 
 def output_handler_config(cfg: dict[str, Any]) -> dict[str, Any]:

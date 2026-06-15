@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import IO, Any
 
@@ -40,7 +41,7 @@ def _format_ts(dt: datetime) -> str:
 
 def _support_line(
     dt: datetime,
-    gifter: str = "",
+    gifter: str | None = "",
     supporter: str = "",
     support_type: str = "",
     amount_cents: int = 0,
@@ -50,6 +51,108 @@ def _support_line(
     ts_str = _format_ts(dt)
     dollars = amount_cents / 100
     return f"{ts_str}\t\t{gifter}\t{supporter}\t{support_type}\t${dollars:0.2f}\tna\t{comment}"
+
+
+# ---------------------------------------------------------------------------
+# Per-event-type formatters. Each returns the bump-log line(s) to write (gift
+# subs expand to one line per recipient). To support a new event type, add a
+# formatter and a row in _FORMATTERS; unhandled types are REJECTED.
+# ---------------------------------------------------------------------------
+
+def _cash_lines(event: CashSupportEvent) -> list[str]:
+    kind_to_type = {"bits": "Bits", "tip": "Tip", "donation": "Tip"}
+    support_type = kind_to_type.get(event.kind, event.kind.capitalize())
+    return [_support_line(
+        event.timestamp,
+        supporter=event.username,
+        support_type=support_type,
+        amount_cents=event.amount_cents,
+        comment=event.comment or "",
+    )]
+
+
+def _sub_lines(event: SubscriptionEvent) -> list[str]:
+    support_type = f"Sub #{event.months}" if event.months else "Sub"
+    amount_cents = _TIER_VALUES_CENTS.get(event.tier, 500)
+    return [_support_line(
+        event.timestamp,
+        supporter=event.username,
+        support_type=support_type,
+        amount_cents=amount_cents,
+        comment=event.message or "",
+    )]
+
+
+def _giftsub_lines(event: GiftSubEvent) -> list[str]:
+    amount_cents = _TIER_VALUES_CENTS.get(event.tier, 500)
+    return [
+        _support_line(
+            event.timestamp,
+            gifter=event.gifter,
+            supporter=recipient,
+            support_type="Sub",
+            amount_cents=amount_cents,
+        )
+        for recipient in event.recipients
+    ]
+
+
+def _raid_incoming_lines(event: RaidIncomingEvent) -> list[str]:
+    return [_support_line(
+        event.timestamp,
+        supporter=event.from_channel,
+        support_type=f"Raid - {event.viewer_count}",
+    )]
+
+
+def _raid_outgoing_lines(event: RaidOutgoingEvent) -> list[str]:
+    return [_support_line(
+        event.timestamp,
+        supporter=event.to_channel,
+        support_type=f"Raid Out - {event.viewer_count}",
+    )]
+
+
+def _raffle_lines(event: RaffleWinEvent) -> list[str]:
+    return [_support_line(
+        event.timestamp,
+        supporter=event.winner,
+        support_type="Raffle",
+    )]
+
+
+def _stream_state_lines(event: StreamStateEvent) -> list[str]:
+    ts_str = _format_ts(event.timestamp)
+    label = "ONLINE" if event.state == "online" else "OFFLINE"
+    return [f"{ts_str}  === {label} ==="]
+
+
+def _hype_train_lines(event: HypeTrainEvent) -> list[str]:
+    ts_str = _format_ts(event.timestamp)
+    if event.kind == "begin":
+        return [f"{ts_str}  === HYPE TRAIN BEGIN ==="]
+    return [
+        f"{ts_str}  === HYPE TRAIN END"
+        f" (level={event.level}, total={event.total}) ==="
+    ]
+
+
+def _song_request_lines(event: SongRequestEvent) -> list[str]:
+    requester = event.requester or "unknown"
+    return [f"  SONG REQUEST FROM {requester}: {event.title}"]
+
+
+_FORMATTERS: dict[type[OngwatchEvent], Callable[[Any], list[str]]] = {
+    CashSupportEvent:  _cash_lines,
+    SubscriptionEvent: _sub_lines,
+    GiftSubEvent:      _giftsub_lines,
+    RaidIncomingEvent: _raid_incoming_lines,
+    RaidOutgoingEvent: _raid_outgoing_lines,
+    RaffleWinEvent:    _raffle_lines,
+    StreamStateEvent:  _stream_state_lines,
+    HypeTrainEvent:    _hype_train_lines,
+    SongRequestEvent:  _song_request_lines,
+}
 
 
 class BumpLogOutput:
@@ -93,91 +196,14 @@ class BumpLogOutput:
         if event.is_test:
             return SendStatus.REJECTED
 
-        if isinstance(event, CashSupportEvent):
-            kind_to_type = {"bits": "Bits", "tip": "Tip", "donation": "Tip"}
-            support_type = kind_to_type.get(event.kind, event.kind.capitalize())
-            self._write(_support_line(
-                event.timestamp,
-                supporter=event.username,
-                support_type=support_type,
-                amount_cents=event.amount_cents,
-                comment=event.comment or "",
-            ))
-            return SendStatus.HANDLED
+        formatter = _FORMATTERS.get(type(event))
+        if formatter is None:
+            self._log.debug("rejecting unhandled event type %s", type(event).__name__)
+            return SendStatus.REJECTED
 
-        if isinstance(event, SubscriptionEvent):
-            support_type = f"Sub #{event.months}" if event.months else "Sub"
-            amount_cents = _TIER_VALUES_CENTS.get(event.tier, 500)
-            self._write(_support_line(
-                event.timestamp,
-                supporter=event.username,
-                support_type=support_type,
-                amount_cents=amount_cents,
-                comment=event.message or "",
-            ))
-            return SendStatus.HANDLED
-
-        if isinstance(event, GiftSubEvent):
-            gifter = event.gifter
-            amount_cents = _TIER_VALUES_CENTS.get(event.tier, 500)
-            for recipient in event.recipients:
-                self._write(_support_line(
-                    event.timestamp,
-                    gifter=gifter,
-                    supporter=recipient,
-                    support_type="Sub",
-                    amount_cents=amount_cents,
-                ))
-            return SendStatus.HANDLED
-
-        if isinstance(event, RaidIncomingEvent):
-            self._write(_support_line(
-                event.timestamp,
-                supporter=event.from_channel,
-                support_type=f"Raid - {event.viewer_count}",
-            ))
-            return SendStatus.HANDLED
-
-        if isinstance(event, RaidOutgoingEvent):
-            self._write(_support_line(
-                event.timestamp,
-                supporter=event.to_channel,
-                support_type=f"Raid Out - {event.viewer_count}",
-            ))
-            return SendStatus.HANDLED
-
-        if isinstance(event, RaffleWinEvent):
-            self._write(_support_line(
-                event.timestamp,
-                supporter=event.winner,
-                support_type="Raffle",
-            ))
-            return SendStatus.HANDLED
-
-        if isinstance(event, StreamStateEvent):
-            ts_str = _format_ts(event.timestamp)
-            label = "ONLINE" if event.state == "online" else "OFFLINE"
-            self._write(f"{ts_str}  === {label} ===")
-            return SendStatus.HANDLED
-
-        if isinstance(event, HypeTrainEvent):
-            ts_str = _format_ts(event.timestamp)
-            if event.kind == "begin":
-                self._write(f"{ts_str}  === HYPE TRAIN BEGIN ===")
-            else:
-                self._write(
-                    f"{ts_str}  === HYPE TRAIN END"
-                    f" (level={event.level}, total={event.total}) ==="
-                )
-            return SendStatus.HANDLED
-
-        if isinstance(event, SongRequestEvent):
-            requester = event.requester or "unknown"
-            self._write(f"  SONG REQUEST FROM {requester}: {event.title}")
-            return SendStatus.HANDLED
-
-        self._log.debug("rejecting unhandled event type %s", type(event).__name__)
-        return SendStatus.REJECTED
+        for line in formatter(event):
+            self._write(line)
+        return SendStatus.HANDLED
 
 
 def create(config: dict[str, Any], logger: logging.Logger) -> BumpLogOutput:

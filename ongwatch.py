@@ -18,7 +18,7 @@ from _ongwatch.backends import BackendAuthHandler, BackendStartHandler
 from _ongwatch.config import (as_config_section, enabled_names, get_config,
                               get_credentials, output_handler_config,
                               parse_int, parse_output_config)
-from _ongwatch.dispatcher import Dispatcher, OutputConfig
+from _ongwatch.dispatcher import Dispatcher, LoadedOutput
 from _ongwatch.outputs import get_output
 
 from tdvutil.argparse import CheckFile
@@ -190,11 +190,10 @@ def _load_backend_specs(
     return specs
 
 
-# Get output configs from config file, instantiate  each output, and return
-# two lists: one for the dispatcher with (name, instance, config) tuples,
-# and one with the raw output instances (for calling stop() at shutdown).
-#
-# FIXME: Look at how we use/store these, wee if we really need two returns
+# Get output configs from config file, instantiate each output, and return a
+# list of LoadedOutput(name, instance, config) for the dispatcher. The
+# dispatcher owns the output lifecycle (start/stop), so callers don't need a
+# separate handle on the instances.
 def _load_outputs(
     config: dict[str, Any],
     environment: str,
@@ -202,7 +201,7 @@ def _load_outputs(
     enable_output: list[str],
     disable_output: list[str],
     debug_output: list[str],
-) -> tuple[list[tuple[str, Any, OutputConfig]], list[Any]]:
+) -> list[LoadedOutput]:
     environment_cfg = as_config_section(config.get(environment, {}), environment)
     outputs_cfg = as_config_section(
         environment_cfg.get("outputs", {}),
@@ -215,8 +214,7 @@ def _load_outputs(
         f"{environment}.outputs",
     )
 
-    triples: list[tuple[str, Any, OutputConfig]] = []
-    instances: list[Any] = []
+    loaded: list[LoadedOutput] = []
 
     for output_name in enabled_outputs:
         env_cfg = as_config_section(
@@ -244,10 +242,9 @@ def _load_outputs(
             raise ValueError(f"failed to load output '{output_name}': {exc}") from exc
 
         name = f"{output_name}.{environment}"
-        triples.append((name, output, output_config))
-        instances.append(output)
+        loaded.append(LoadedOutput(name, output, output_config))
 
-    return triples, instances
+    return loaded
 
 
 # FIXME: A bit long, might need refactoring
@@ -270,7 +267,7 @@ async def async_main(args: argparse.Namespace) -> int:
             min_value=1,
         )
 
-        output_triples, output_instances = _load_outputs(
+        loaded_outputs = _load_outputs(
             config, args.environment, args.config_file,
             args.enable_output, args.disable_output, args.debug_output,
         )
@@ -281,18 +278,14 @@ async def async_main(args: argparse.Namespace) -> int:
 
     logging.info(f"Enabled backends: {' '.join(spec.name for spec in backend_specs)}")
 
-    dispatcher = Dispatcher(output_triples, heartbeat_interval=heartbeat_interval)
+    dispatcher = Dispatcher(loaded_outputs, heartbeat_interval=heartbeat_interval)
     dispatcher_started = False
-    started_outputs: list[Any] = []
     supervised_tasks: list[asyncio.Task[None]] = []
     shutdown_task: asyncio.Task[bool] | None = None
     exit_code = 0
 
     try:
-        for output in output_instances:
-            await output.start()
-            started_outputs.append(output)
-
+        # Dispatcher.start() starts each output, then the worker/heartbeat tasks.
         await dispatcher.start()
         dispatcher_started = True
 
@@ -381,15 +374,8 @@ async def async_main(args: argparse.Namespace) -> int:
         if dispatcher_started:
             await dispatcher.drain(timeout=30)
 
-        # Cancel dispatcher internal tasks
+        # Cancel dispatcher internal tasks and stop each started output
         await dispatcher.stop()
-
-        # Close each output
-        for output in reversed(started_outputs):
-            try:
-                await output.stop()
-            except Exception:
-                logging.exception("Output failed during stop")
 
     return exit_code
 

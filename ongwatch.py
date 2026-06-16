@@ -237,7 +237,11 @@ def _load_outputs(
             handler_cfg = output_handler_config(env_cfg)
             if "validate_config" in dir(module):
                 module.validate_config(handler_cfg)
-            output = module.create(env_cfg, logger)
+            # Inject the active environment so outputs can derive it (e.g. mqtt
+            # builds a collision-free default client_id from it). Injected here
+            # rather than read from the TOML so it can't be accidentally
+            # overridden, and validated config above never sees it.
+            output = module.create({**env_cfg, "environment": environment}, logger)
         except Exception as exc:
             raise ValueError(f"failed to load output '{output_name}': {exc}") from exc
 

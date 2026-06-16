@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
@@ -151,6 +153,22 @@ def _is_permanent_connect_error(exc: aiomqtt.MqttError) -> bool:
     return any(fragment in message for fragment in _PERMANENT_CONNECT_MESSAGES)
 
 
+def _default_client_id(channel: str, environment: str) -> str:
+    """Build a collision-free default MQTT client id.
+
+    Two ongwatch instances that share a broker must not share a client id, or
+    the broker will evict whichever connected first (MQTT requires client ids
+    to be unique). Channel + environment + a short hash of the working
+    directory distinguishes the common cases: different channels, the same
+    checkout run as dev vs. production, and separate deployments on the same
+    host. The directory hash is stable across restarts as long as the instance
+    keeps the same working directory.
+    """
+    cwd = os.path.abspath(os.getcwd())
+    digest = hashlib.sha256(cwd.encode("utf-8")).hexdigest()[:8]
+    return f"ongwatch-{channel}-{environment}-{digest}"
+
+
 def _ts(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -218,7 +236,12 @@ class MQTTOutput:
         self._port: int = int(config.get("port", 1883))
         self._channel: str = config["channel"]
         self._topic_prefix: str = config.get("topic_prefix", "")
-        self._client_id: str = config.get("client_id", "") or f"ongwatch-{self._channel}"
+        # "environment" is injected by the output loader, not user-set config.
+        self._environment: str = config.get("environment", "") or "dev"
+        self._client_id: str = (
+            config.get("client_id", "")
+            or _default_client_id(self._channel, self._environment)
+        )
         self._username: str | None = config.get("username") or None
         self._password: str | None = config.get("password") or None
         self._qos_events: int = int(config.get("qos_events", 1))
